@@ -1,254 +1,385 @@
 #!/bin/bash
-# =============================================================================
-# destroy-infra-cesarmiguel.sh
-# Script completo de destruição de infraestrutura AWS
-# Apaga todos os recursos criados pelo setup-infra-cesarmiguel.sh
-# =============================================================================
-set -e
+
+# =============================================================
+#  DESTROY - ARQUITETURA 3 CAMADAS NA AWS
+#  Lê o arquivo deploy_summary_*.txt e remove todos os recursos.
+# =============================================================
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+log_info()    { echo -e "${BLUE}[INFO]${NC}  $1"; }
+log_ok()      { echo -e "${GREEN}[OK]${NC}    $1"; }
+log_skip()    { echo -e "${YELLOW}[SKIP]${NC}  $1 — já removido ou não encontrado."; }
+log_error()   { echo -e "${RED}[ERRO]${NC}  $1"; exit 1; }
+log_section() { echo -e "\n${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; echo -e "${YELLOW}  $1${NC}"; echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"; }
 
 AWS_REGION="us-east-1"
 
-# Cores para output
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
-RED='\033[0;31m'
-NC='\033[0m'
-
-log()  { echo -e "${CYAN}[INFO]${NC} $1"; }
-ok()   { echo -e "${GREEN}[OK]${NC}   $1"; }
-warn() { echo -e "${YELLOW}[WAIT]${NC} $1"; }
-err()  { echo -e "${RED}[SKIP]${NC} $1"; }
-
-echo ""
-echo "=============================================="
-echo "  Destruição de Infraestrutura AWS"
-echo "  Projeto: preset-cesarmiguel"
-echo "=============================================="
-echo ""
-
-# ─── HELPER: busca por tag Name ──────────────────────────────────────────────
-get_vpc_id() {
-  aws ec2 describe-vpcs \
-    --filters "Name=tag:Name,Values=preset-cesarmiguel-vpc" \
-    --query 'Vpcs[0].VpcId' --output text --region "$AWS_REGION" 2>/dev/null || echo ""
+# ================================================================
+#  FUNÇÃO: extrai o valor de uma variável do summary
+#  Pega somente o primeiro token (antes de qualquer espaço/parêntese)
+# ================================================================
+get_var() {
+    local VAR_NAME="$1"
+    local FILE="$2"
+    grep -E "^${VAR_NAME}=" "$FILE" | head -1 | cut -d'=' -f2 | awk '{print $1}' | tr -d '()'
 }
 
-# =============================================================================
-# BUSCAR VPC (base para todos os outros recursos)
-# =============================================================================
-log "Buscando VPC..."
-VPC_ID=$(get_vpc_id)
+# ================================================================
+#  FUNÇÃO: aguarda NAT Gateway atingir estado 'deleted'
+#  (aws ec2 wait nat-gateway-deleted não existe na CLI)
+# ================================================================
+wait_nat_deleted() {
+    local NAT_ID="$1"
+    log_info "Aguardando NAT Gateway ser removido (pode levar ~60s)..."
+    for i in $(seq 1 30); do
+        STATE=$(aws ec2 describe-nat-gateways \
+          --nat-gateway-ids "$NAT_ID" \
+          --query 'NatGateways[0].State' \
+          --region "$AWS_REGION" \
+          --output text 2>/dev/null || echo "deleted")
+        if [[ "$STATE" == "deleted" ]]; then
+            log_ok "NAT Gateway removido."
+            return 0
+        fi
+        echo -e "    Estado atual: ${STATE} — aguardando... (${i}/30)"
+        sleep 10
+    done
+    log_error "Timeout aguardando NAT Gateway ser deletado. Verifique no console AWS."
+}
 
-if [ -z "$VPC_ID" ] || [ "$VPC_ID" == "None" ]; then
-  echo -e "${RED}VPC não encontrada. Infraestrutura já foi removida ou nunca foi criada.${NC}"
-  exit 0
+# ================================================================
+#  LOCALIZA O SUMMARY
+# ================================================================
+
+SUMMARY_FILE=$(ls -t deploy_summary_*.txt 2>/dev/null | head -1 || true)
+
+if [[ -z "$SUMMARY_FILE" ]]; then
+    log_error "Nenhum arquivo deploy_summary_*.txt encontrado no diretório atual."
 fi
-ok "VPC encontrada: $VPC_ID"
 
-# =============================================================================
-# PARTE 1 — TERMINAR EC2s
-# =============================================================================
-echo ""
-echo -e "${CYAN}>>> PARTE 1 — Encerrando EC2s${NC}"
-echo ""
+log_info "Usando arquivo de summary: $SUMMARY_FILE"
 
-for TAG in "preset-cesarmiguel-ec2-public-nginx" "preset-cesarmiguel-ec2-private"; do
-  INSTANCE_ID=$(aws ec2 describe-instances \
-    --filters "Name=tag:Name,Values=$TAG" "Name=instance-state-name,Values=running,stopped,pending" \
-    --query 'Reservations[0].Instances[0].InstanceId' --output text --region "$AWS_REGION")
+# ================================================================
+#  LÊ CADA VARIÁVEL INDIVIDUALMENTE DO SUMMARY
+# ================================================================
 
-  if [ -z "$INSTANCE_ID" ] || [ "$INSTANCE_ID" == "None" ]; then
-    err "EC2 '$TAG' não encontrada, pulando..."
-  else
-    log "Terminando EC2: $INSTANCE_ID ($TAG)..."
-    aws ec2 terminate-instances --instance-ids "$INSTANCE_ID" --region "$AWS_REGION" > /dev/null
-    warn "Aguardando EC2 $INSTANCE_ID ser terminada..."
-    aws ec2 wait instance-terminated --instance-ids "$INSTANCE_ID" --region "$AWS_REGION"
-    ok "EC2 terminada: $INSTANCE_ID"
-  fi
+VPC_ID=$(get_var "VPC_ID" "$SUMMARY_FILE")
+IGW_ID=$(get_var "IGW_ID" "$SUMMARY_FILE")
+NAT_GW_ID=$(get_var "NAT_GW_ID" "$SUMMARY_FILE")
+EIP_ALLOC_ID=$(get_var "EIP_ALLOC_ID" "$SUMMARY_FILE")
+
+SUBNET_PUBLIC_1=$(get_var "SUBNET_PUBLIC_1" "$SUMMARY_FILE")
+SUBNET_PUBLIC_2=$(get_var "SUBNET_PUBLIC_2" "$SUMMARY_FILE")
+SUBNET_PRIVATE_FRONT1=$(get_var "SUBNET_PRIVATE_FRONT1" "$SUMMARY_FILE")
+SUBNET_PRIVATE_FRONT2=$(get_var "SUBNET_PRIVATE_FRONT2" "$SUMMARY_FILE")
+SUBNET_PRIVATE_BACKEND=$(get_var "SUBNET_PRIVATE_BACKEND" "$SUMMARY_FILE")
+SUBNET_PRIVATE_DB=$(get_var "SUBNET_PRIVATE_DB" "$SUMMARY_FILE")
+
+SG_BASTION=$(get_var "SG_BASTION" "$SUMMARY_FILE")
+SG_ALB=$(get_var "SG_ALB" "$SUMMARY_FILE")
+SG_FRONTEND=$(get_var "SG_FRONTEND" "$SUMMARY_FILE")
+SG_BACKEND=$(get_var "SG_BACKEND" "$SUMMARY_FILE")
+SG_DB=$(get_var "SG_DB" "$SUMMARY_FILE")
+
+INSTANCE_BASTION=$(get_var "INSTANCE_BASTION" "$SUMMARY_FILE")
+INSTANCE_FRONTEND_1=$(get_var "INSTANCE_FRONTEND_1" "$SUMMARY_FILE")
+INSTANCE_FRONTEND_2=$(get_var "INSTANCE_FRONTEND_2" "$SUMMARY_FILE")
+INSTANCE_BACKEND=$(get_var "INSTANCE_BACKEND" "$SUMMARY_FILE")
+INSTANCE_DB=$(get_var "INSTANCE_DB" "$SUMMARY_FILE")
+
+ALB_ARN=$(get_var "ALB_ARN" "$SUMMARY_FILE")
+TG_ARN=$(get_var "TG_ARN" "$SUMMARY_FILE")
+
+# ================================================================
+#  VALIDA VARIÁVEIS
+# ================================================================
+
+ERRORS=0
+for VAR_NAME in VPC_ID IGW_ID NAT_GW_ID EIP_ALLOC_ID \
+                SUBNET_PUBLIC_1 SUBNET_PUBLIC_2 \
+                SUBNET_PRIVATE_FRONT1 SUBNET_PRIVATE_FRONT2 \
+                SUBNET_PRIVATE_BACKEND SUBNET_PRIVATE_DB \
+                SG_BASTION SG_ALB SG_FRONTEND SG_BACKEND SG_DB \
+                INSTANCE_BASTION INSTANCE_FRONTEND_1 INSTANCE_FRONTEND_2 \
+                INSTANCE_BACKEND INSTANCE_DB ALB_ARN TG_ARN; do
+    VAL="${!VAR_NAME}"
+    if [[ -z "$VAL" ]]; then
+        echo -e "${RED}[ERRO]${NC}  Variável '$VAR_NAME' não encontrada ou vazia no summary."
+        ERRORS=$((ERRORS + 1))
+    fi
 done
 
-# =============================================================================
-# PARTE 2 — DELETAR SECURITY GROUPS
-# =============================================================================
+if [[ $ERRORS -gt 0 ]]; then
+    log_error "$ERRORS variável(is) não encontrada(s). Verifique: $SUMMARY_FILE"
+fi
+
+# ================================================================
+#  CONFIRMAÇÃO
+# ================================================================
+
 echo ""
-echo -e "${CYAN}>>> PARTE 2 — Deletando Security Groups${NC}"
+echo -e "${RED}╔══════════════════════════════════════════════════════════╗${NC}"
+echo -e "${RED}║   ATENÇÃO: ESTA AÇÃO É IRREVERSÍVEL!                    ║${NC}"
+echo -e "${RED}║   Todos os recursos abaixo serão PERMANENTEMENTE        ║${NC}"
+echo -e "${RED}║   deletados da sua conta AWS.                           ║${NC}"
+echo -e "${RED}╚══════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo    "  VPC:         $VPC_ID"
+echo    "  IGW:         $IGW_ID"
+echo    "  NAT Gateway: $NAT_GW_ID"
+echo    "  ALB:         $ALB_ARN"
+echo    "  Instâncias:"
+echo    "    Bastion:    $INSTANCE_BASTION"
+echo    "    Frontend 1: $INSTANCE_FRONTEND_1"
+echo    "    Frontend 2: $INSTANCE_FRONTEND_2"
+echo    "    Backend:    $INSTANCE_BACKEND"
+echo    "    DB:         $INSTANCE_DB"
+echo ""
+read -r -p "  Digite 'DESTROY' para confirmar: " CONFIRM
+
+if [[ "$CONFIRM" != "DESTROY" ]]; then
+    echo ""
+    echo -e "${YELLOW}Operação cancelada pelo usuário.${NC}"
+    exit 0
+fi
+
 echo ""
 
-for SG_NAME in "preset-cesarmiguel-sg-public" "preset-cesarmiguel-sg-private"; do
-  SG_ID=$(aws ec2 describe-security-groups \
-    --filters "Name=tag:Name,Values=$SG_NAME" \
-    --query 'SecurityGroups[0].GroupId' --output text --region "$AWS_REGION")
+# ================================================================
+#  1. ALB — LISTENERS E LOAD BALANCER
+# ================================================================
 
-  if [ -z "$SG_ID" ] || [ "$SG_ID" == "None" ]; then
-    err "SG '$SG_NAME' não encontrado, pulando..."
-  else
-    log "Deletando Security Group: $SG_ID ($SG_NAME)..."
-    aws ec2 delete-security-group --group-id "$SG_ID" --region "$AWS_REGION"
-    ok "Security Group deletado: $SG_ID"
-  fi
+log_section "1/8 — Removendo Load Balancer e Listeners"
+
+LISTENERS=$(aws elbv2 describe-listeners \
+  --load-balancer-arn "$ALB_ARN" \
+  --region "$AWS_REGION" \
+  --query 'Listeners[*].ListenerArn' \
+  --output text 2>/dev/null || true)
+
+for LISTENER_ARN in $LISTENERS; do
+    log_info "Deletando listener: $LISTENER_ARN"
+    aws elbv2 delete-listener \
+      --listener-arn "$LISTENER_ARN" \
+      --region "$AWS_REGION"
 done
 
-# =============================================================================
-# PARTE 3 — DELETAR KEY PAIR
-# =============================================================================
-echo ""
-echo -e "${CYAN}>>> PARTE 3 — Deletando Key Pair${NC}"
-echo ""
+log_info "Deletando ALB..."
+aws elbv2 delete-load-balancer \
+  --load-balancer-arn "$ALB_ARN" \
+  --region "$AWS_REGION"
 
-KEY_NAME="preset-cesarmiguel-key"
-log "Deletando key pair: $KEY_NAME..."
-aws ec2 delete-key-pair --key-name "$KEY_NAME" --region "$AWS_REGION" && ok "Key pair deletado: $KEY_NAME" || err "Key pair não encontrado, pulando..."
+log_info "Aguardando ALB ser completamente removido..."
+aws elbv2 wait load-balancers-deleted \
+  --load-balancer-arns "$ALB_ARN" \
+  --region "$AWS_REGION"
 
-# =============================================================================
-# PARTE 4 — DELETAR NACLs
-# =============================================================================
-echo ""
-echo -e "${CYAN}>>> PARTE 4 — Deletando NACLs${NC}"
-echo ""
+log_ok "ALB removido."
 
-for NACL_NAME in "preset-cesarmiguel-nacl-public" "preset-cesarmiguel-nacl-private"; do
-  NACL_ID=$(aws ec2 describe-network-acls \
-    --filters "Name=tag:Name,Values=$NACL_NAME" \
-    --query 'NetworkAcls[0].NetworkAclId' --output text --region "$AWS_REGION")
+# ================================================================
+#  2. TARGET GROUP
+# ================================================================
 
-  if [ -z "$NACL_ID" ] || [ "$NACL_ID" == "None" ]; then
-    err "NACL '$NACL_NAME' não encontrada, pulando..."
-  else
-    log "Deletando NACL: $NACL_ID ($NACL_NAME)..."
-    aws ec2 delete-network-acl --network-acl-id "$NACL_ID" --region "$AWS_REGION"
-    ok "NACL deletada: $NACL_ID"
-  fi
+log_section "2/8 — Removendo Target Group"
+
+aws elbv2 delete-target-group \
+  --target-group-arn "$TG_ARN" \
+  --region "$AWS_REGION"
+
+log_ok "Target Group removido."
+
+# ================================================================
+#  3. INSTÂNCIAS EC2
+# ================================================================
+
+log_section "3/8 — Terminando instâncias EC2"
+
+ALL_INSTANCES="$INSTANCE_BASTION $INSTANCE_FRONTEND_1 $INSTANCE_FRONTEND_2 $INSTANCE_BACKEND $INSTANCE_DB"
+
+log_info "Terminando: $ALL_INSTANCES"
+aws ec2 terminate-instances \
+  --instance-ids $ALL_INSTANCES \
+  --region "$AWS_REGION" > /dev/null
+
+log_info "Aguardando todas as instâncias serem terminadas (~2 minutos)..."
+aws ec2 wait instance-terminated \
+  --instance-ids $ALL_INSTANCES \
+  --region "$AWS_REGION"
+
+log_ok "Todas as instâncias terminadas."
+
+# ================================================================
+#  4. NAT GATEWAY + ELASTIC IP
+# ================================================================
+
+log_section "4/8 — Removendo NAT Gateway e Elastic IP"
+
+log_info "Deletando NAT Gateway: $NAT_GW_ID"
+aws ec2 delete-nat-gateway \
+  --nat-gateway-id "$NAT_GW_ID" \
+  --region "$AWS_REGION" > /dev/null
+
+# Polling manual — 'aws ec2 wait nat-gateway-deleted' não existe na CLI
+wait_nat_deleted "$NAT_GW_ID"
+
+log_info "Liberando Elastic IP: $EIP_ALLOC_ID"
+aws ec2 release-address \
+  --allocation-id "$EIP_ALLOC_ID" \
+  --region "$AWS_REGION"
+
+log_ok "Elastic IP liberado."
+
+# ================================================================
+#  5. SECURITY GROUPS
+# ================================================================
+
+log_section "5/8 — Removendo Security Groups"
+
+log_info "Removendo regras de dependência entre Security Groups..."
+
+aws ec2 revoke-security-group-ingress --group-id "$SG_FRONTEND" \
+  --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":80,\"ToPort\":80,\"UserIdGroupPairs\":[{\"GroupId\":\"$SG_ALB\"}]}]" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+aws ec2 revoke-security-group-ingress --group-id "$SG_FRONTEND" \
+  --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"UserIdGroupPairs\":[{\"GroupId\":\"$SG_BASTION\"}]}]" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+aws ec2 revoke-security-group-ingress --group-id "$SG_BACKEND" \
+  --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":8080,\"ToPort\":8080,\"UserIdGroupPairs\":[{\"GroupId\":\"$SG_FRONTEND\"}]}]" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+aws ec2 revoke-security-group-ingress --group-id "$SG_BACKEND" \
+  --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"UserIdGroupPairs\":[{\"GroupId\":\"$SG_BASTION\"}]}]" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+aws ec2 revoke-security-group-ingress --group-id "$SG_DB" \
+  --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":3306,\"ToPort\":3306,\"UserIdGroupPairs\":[{\"GroupId\":\"$SG_BACKEND\"}]}]" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+aws ec2 revoke-security-group-ingress --group-id "$SG_DB" \
+  --ip-permissions "[{\"IpProtocol\":\"tcp\",\"FromPort\":22,\"ToPort\":22,\"UserIdGroupPairs\":[{\"GroupId\":\"$SG_BASTION\"}]}]" \
+  --region "$AWS_REGION" 2>/dev/null || true
+
+log_ok "Regras de dependência removidas."
+
+for SG_ID in "$SG_DB" "$SG_BACKEND" "$SG_FRONTEND" "$SG_ALB" "$SG_BASTION"; do
+    log_info "Deletando Security Group: $SG_ID"
+    aws ec2 delete-security-group \
+      --group-id "$SG_ID" \
+      --region "$AWS_REGION" 2>/dev/null \
+      && log_ok "SG $SG_ID removido." \
+      || log_skip "SG $SG_ID"
 done
 
-# =============================================================================
-# PARTE 5 — DELETAR ROUTE TABLES
-# =============================================================================
-echo ""
-echo -e "${CYAN}>>> PARTE 5 — Deletando Route Tables${NC}"
-echo ""
+# ================================================================
+#  6. ROUTE TABLES
+# ================================================================
 
-for RTB_NAME in "preset-cesarmiguel-rtb-public" "preset-cesarmiguel-rtb-private1-us-east-1a"; do
-  RTB_ID=$(aws ec2 describe-route-tables \
-    --filters "Name=tag:Name,Values=$RTB_NAME" \
-    --query 'RouteTables[0].RouteTableId' --output text --region "$AWS_REGION")
+log_section "6/8 — Removendo Tabelas de Roteamento"
 
-  if [ -z "$RTB_ID" ] || [ "$RTB_ID" == "None" ]; then
-    err "Route table '$RTB_NAME' não encontrada, pulando..."
-  else
-    # Desassociar antes de deletar
+RT_IDS=$(aws ec2 describe-route-tables \
+  --filters "Name=vpc-id,Values=$VPC_ID" \
+  --query 'RouteTables[?Associations[0].Main!=`true`].RouteTableId' \
+  --region "$AWS_REGION" \
+  --output text 2>/dev/null || true)
+
+for RT_ID in $RT_IDS; do
     ASSOC_IDS=$(aws ec2 describe-route-tables \
-      --route-table-ids "$RTB_ID" \
-      --query 'RouteTables[0].Associations[?Main==`false`].RouteTableAssociationId' \
-      --output text --region "$AWS_REGION")
+      --route-table-ids "$RT_ID" \
+      --query 'RouteTables[0].Associations[?!Main].RouteTableAssociationId' \
+      --region "$AWS_REGION" \
+      --output text 2>/dev/null || true)
 
     for ASSOC_ID in $ASSOC_IDS; do
-      log "Desassociando route table: $ASSOC_ID..."
-      aws ec2 disassociate-route-table --association-id "$ASSOC_ID" --region "$AWS_REGION"
+        log_info "Desassociando: $ASSOC_ID"
+        aws ec2 disassociate-route-table \
+          --association-id "$ASSOC_ID" \
+          --region "$AWS_REGION" 2>/dev/null || true
     done
 
-    log "Deletando Route Table: $RTB_ID ($RTB_NAME)..."
-    aws ec2 delete-route-table --route-table-id "$RTB_ID" --region "$AWS_REGION"
-    ok "Route table deletada: $RTB_ID"
-  fi
+    log_info "Deletando Route Table: $RT_ID"
+    aws ec2 delete-route-table \
+      --route-table-id "$RT_ID" \
+      --region "$AWS_REGION" 2>/dev/null \
+      && log_ok "Route Table $RT_ID removida." \
+      || log_skip "RT $RT_ID"
 done
 
-# =============================================================================
-# PARTE 6 — DELETAR NAT GATEWAY + ELASTIC IP
-# =============================================================================
-echo ""
-echo -e "${CYAN}>>> PARTE 6 — Deletando NAT Gateway e Elastic IP${NC}"
-echo ""
+# ================================================================
+#  7. SUB-REDES
+# ================================================================
 
-NAT_GW_ID=$(aws ec2 describe-nat-gateways \
-  --filter "Name=tag:Name,Values=preset-cesarmiguel-nat-public1-us-east-1a" \
-           "Name=state,Values=available,pending" \
-  --query 'NatGateways[0].NatGatewayId' --output text --region "$AWS_REGION")
+log_section "7/8 — Removendo Sub-redes"
 
-if [ -z "$NAT_GW_ID" ] || [ "$NAT_GW_ID" == "None" ]; then
-  err "NAT Gateway não encontrado, pulando..."
-else
-  log "Deletando NAT Gateway: $NAT_GW_ID..."
-  aws ec2 delete-nat-gateway --nat-gateway-id "$NAT_GW_ID" --region "$AWS_REGION" > /dev/null
-  warn "Aguardando NAT Gateway ser deletado (pode levar ~1 min)..."
-  aws ec2 wait nat-gateway-deleted --nat-gateway-ids "$NAT_GW_ID" --region "$AWS_REGION"
-  ok "NAT Gateway deletado: $NAT_GW_ID"
-fi
-
-EIP_ALLOC_ID=$(aws ec2 describe-addresses \
-  --filters "Name=tag:Name,Values=preset-cesarmiguel-eip-us-east-1a" \
-  --query 'Addresses[0].AllocationId' --output text --region "$AWS_REGION")
-
-if [ -z "$EIP_ALLOC_ID" ] || [ "$EIP_ALLOC_ID" == "None" ]; then
-  err "Elastic IP não encontrado, pulando..."
-else
-  log "Liberando Elastic IP: $EIP_ALLOC_ID..."
-  aws ec2 release-address --allocation-id "$EIP_ALLOC_ID" --region "$AWS_REGION"
-  ok "Elastic IP liberado: $EIP_ALLOC_ID"
-fi
-
-# =============================================================================
-# PARTE 7 — DESANEXAR E DELETAR INTERNET GATEWAY
-# =============================================================================
-echo ""
-echo -e "${CYAN}>>> PARTE 7 — Deletando Internet Gateway${NC}"
-echo ""
-
-IGW_ID=$(aws ec2 describe-internet-gateways \
-  --filters "Name=tag:Name,Values=preset-cesarmiguel-igw" \
-  --query 'InternetGateways[0].InternetGatewayId' --output text --region "$AWS_REGION")
-
-if [ -z "$IGW_ID" ] || [ "$IGW_ID" == "None" ]; then
-  err "Internet Gateway não encontrado, pulando..."
-else
-  log "Desanexando Internet Gateway: $IGW_ID..."
-  aws ec2 detach-internet-gateway \
-    --internet-gateway-id "$IGW_ID" \
-    --vpc-id "$VPC_ID" --region "$AWS_REGION"
-
-  log "Deletando Internet Gateway: $IGW_ID..."
-  aws ec2 delete-internet-gateway --internet-gateway-id "$IGW_ID" --region "$AWS_REGION"
-  ok "Internet Gateway deletado: $IGW_ID"
-fi
-
-# =============================================================================
-# PARTE 8 — DELETAR SUBNETS
-# =============================================================================
-echo ""
-echo -e "${CYAN}>>> PARTE 8 — Deletando Subnets${NC}"
-echo ""
-
-for SUBNET_NAME in "preset-cesarmiguel-subnet-public1-us-east-1a" "preset-cesarmiguel-subnet-private1-us-east-1a"; do
-  SUBNET_ID=$(aws ec2 describe-subnets \
-    --filters "Name=tag:Name,Values=$SUBNET_NAME" \
-    --query 'Subnets[0].SubnetId' --output text --region "$AWS_REGION")
-
-  if [ -z "$SUBNET_ID" ] || [ "$SUBNET_ID" == "None" ]; then
-    err "Subnet '$SUBNET_NAME' não encontrada, pulando..."
-  else
-    log "Deletando Subnet: $SUBNET_ID ($SUBNET_NAME)..."
-    aws ec2 delete-subnet --subnet-id "$SUBNET_ID" --region "$AWS_REGION"
-    ok "Subnet deletada: $SUBNET_ID"
-  fi
+for SUBNET_ID in "$SUBNET_PUBLIC_1" "$SUBNET_PUBLIC_2" \
+                 "$SUBNET_PRIVATE_FRONT1" "$SUBNET_PRIVATE_FRONT2" \
+                 "$SUBNET_PRIVATE_BACKEND" "$SUBNET_PRIVATE_DB"; do
+    log_info "Deletando Sub-rede: $SUBNET_ID"
+    aws ec2 delete-subnet \
+      --subnet-id "$SUBNET_ID" \
+      --region "$AWS_REGION" 2>/dev/null \
+      && log_ok "Sub-rede $SUBNET_ID removida." \
+      || log_skip "Subnet $SUBNET_ID"
 done
 
-# =============================================================================
-# PARTE 9 — DELETAR VPC
-# =============================================================================
+# ================================================================
+#  8. INTERNET GATEWAY + VPC
+# ================================================================
+
+log_section "8/8 — Removendo Internet Gateway e VPC"
+
+log_info "Desanexando Internet Gateway: $IGW_ID da VPC: $VPC_ID"
+aws ec2 detach-internet-gateway \
+  --internet-gateway-id "$IGW_ID" \
+  --vpc-id "$VPC_ID" \
+  --region "$AWS_REGION" 2>/dev/null || log_skip "IGW já desanexado"
+
+log_info "Deletando Internet Gateway: $IGW_ID"
+aws ec2 delete-internet-gateway \
+  --internet-gateway-id "$IGW_ID" \
+  --region "$AWS_REGION" 2>/dev/null \
+  && log_ok "Internet Gateway removido." \
+  || log_skip "IGW $IGW_ID"
+
+log_info "Deletando VPC: $VPC_ID"
+aws ec2 delete-vpc \
+  --vpc-id "$VPC_ID" \
+  --region "$AWS_REGION" 2>/dev/null \
+  && log_ok "VPC removida." \
+  || log_skip "VPC $VPC_ID"
+
+# ================================================================
+#  RESUMO FINAL
+# ================================================================
+
 echo ""
-echo -e "${CYAN}>>> PARTE 9 — Deletando VPC${NC}"
+echo -e "${GREEN}╔══════════════════════════════════════════════════════╗${NC}"
+echo -e "${GREEN}║      DESTROY CONCLUÍDO COM SUCESSO!                 ║${NC}"
+echo -e "${GREEN}╚══════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo    "  Recursos destruídos:"
+echo    "    ✓ Application Load Balancer + Listeners"
+echo    "    ✓ Target Group"
+echo    "    ✓ 5 Instâncias EC2 (Bastion, 2x Frontend, Backend, DB)"
+echo    "    ✓ NAT Gateway + Elastic IP"
+echo    "    ✓ 5 Security Groups"
+echo    "    ✓ Route Tables"
+echo    "    ✓ 6 Sub-redes"
+echo    "    ✓ Internet Gateway"
+echo    "    ✓ VPC"
+echo ""
+echo -e "${YELLOW}  Verifique no console AWS se não restou nenhum recurso${NC}"
+echo -e "${YELLOW}  ativo para evitar cobranças inesperadas.${NC}"
 echo ""
 
-log "Deletando VPC: $VPC_ID..."
-aws ec2 delete-vpc --vpc-id "$VPC_ID" --region "$AWS_REGION"
-ok "VPC deletada: $VPC_ID"
-
-# =============================================================================
-# RESUMO FINAL
-# =============================================================================
-echo ""
-echo "=============================================="
-echo -e "${GREEN}  ✅ Infraestrutura removida com sucesso!${NC}"
-echo "=============================================="
+mv "$SUMMARY_FILE" "${SUMMARY_FILE%.txt}_DESTROYED.txt"
+log_ok "Summary arquivado como: ${SUMMARY_FILE%.txt}_DESTROYED.txt"
 echo ""
