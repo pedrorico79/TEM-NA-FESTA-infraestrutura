@@ -1,0 +1,745 @@
+#  Grupo 03 - Projeto Tem Na Festa
+#  
+#  Orientador: Eduardo Verri
+#  César Augusto Araujo Miguel (RA: 04251125)
+#  Felipe Hideki Inoue de Souza (RA: 04251095)
+#  Igor Felix Latorre Simão (RA: 04251120)
+#  Kauã Medeiros (RA: 04251012) 
+#  Laura Belinello Buzzato (RA: 04251094)
+#  Pedro Henrique Oliveira Rico (RA: 04251088)
+#
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Arquitetura 3 camadas na AWS - Frontend (Apache + EFS) | Backend (2 AZs)
+  | RDS MySQL Multi-AZ | Bastion Host | ALB e NAT Gateway (1 por AZ).
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: tem-na-festa
+    Description: Prefixo usado no nome de todos os recursos.
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Key Pair ja existente na conta, usada para SSH nas instancias.
+
+  BastionSSHCidr:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: >
+      CIDR de origem liberado para SSH no Bastion. Para producao, restrinja
+      ao seu IP (ex.: 203.0.113.10/32).
+
+  InstanceTypeFrontend:
+    Type: String
+    Default: t3.micro
+
+  InstanceTypeBackend:
+    Type: String
+    Default: t3.micro
+
+  InstanceTypeBastion:
+    Type: String
+    Default: t3.micro
+
+  BackendPort:
+    Type: Number
+    Default: 8080
+
+  DBInstanceClass:
+    Type: String
+    Default: db.t3.micro
+
+  DBName:
+    Type: String
+    Default: temnafesta
+
+  DBMasterUsername:
+    Type: String
+    Default: admin
+
+  DBMasterPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    Description: Senha do usuario master do RDS.
+
+  LatestUbuntuAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id
+    Description: AMI Ubuntu 22.04 mais recente via SSM.
+
+Resources:
+  # =========================================================================
+  # 1. VPC E GATEWAYS
+  # =========================================================================
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/24
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-vpc' }
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-igw' }
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  NatEIPA:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatEIPB:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGatewayA:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIPA.AllocationId
+      SubnetId: !Ref PublicSubnetBastion
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-nat-1a' }
+
+  NatGatewayB:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEIPB.AllocationId
+      SubnetId: !Ref PublicSubnetAlb
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-nat-1b' }
+
+  # =========================================================================
+  # 2. SUBNETS
+  # =========================================================================
+  PublicSubnetBastion:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.0/27
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-public-bastion-1a' }
+
+  PublicSubnetAlb:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.32/27
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-public-alb-1b' }
+
+  PrivateSubnetFrontend1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.64/28
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-frontend-1a' }
+
+  PrivateSubnetFrontend1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.80/28
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-frontend-1b' }
+
+  PrivateSubnetBackend1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.96/28
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-backend-1a' }
+
+  PrivateSubnetBackend1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.112/28
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-backend-1b' }
+
+  PrivateSubnetDb1a:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.128/28
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-db-1a' }
+
+  PrivateSubnetDb1b:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.0.144/28
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-db-1b' }
+
+  # =========================================================================
+  # 3. ROUTE TABLES
+  # =========================================================================
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-public-rt' }
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # --- Route table privada da AZ A (1a) -> aponta para NatGatewayA ---
+  PrivateRouteTableA:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-rt-1a' }
+
+  PrivateRouteA:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableA
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayA
+
+  # --- Route table privada da AZ B (1b) -> aponta para NatGatewayB ---
+  PrivateRouteTableB:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-private-rt-1b' }
+
+  PrivateRouteB:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableB
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGatewayB
+
+  # ASSOCIATIONS
+  PubBastionRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetBastion
+      RouteTableId: !Ref PublicRouteTable
+  PubAlbRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetAlb
+      RouteTableId: !Ref PublicRouteTable
+
+  # Subnets da AZ A -> route table da AZ A
+  PrivFront1aRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetFrontend1a
+      RouteTableId: !Ref PrivateRouteTableA
+  PrivBack1aRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetBackend1a
+      RouteTableId: !Ref PrivateRouteTableA
+  PrivDb1aRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetDb1a
+      RouteTableId: !Ref PrivateRouteTableA
+
+  # Subnets da AZ B -> route table da AZ B
+  PrivFront1bRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetFrontend1b
+      RouteTableId: !Ref PrivateRouteTableB
+  PrivBack1bRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetBackend1b
+      RouteTableId: !Ref PrivateRouteTableB
+  PrivDb1bRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetDb1b
+      RouteTableId: !Ref PrivateRouteTableB
+
+  # =========================================================================
+  # 4. SECURITY GROUPS
+  # =========================================================================
+  SGBastion:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Bastion SSH
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref BastionSSHCidr
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-sg-bastion' }
+
+  SGAlb:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB HTTP/HTTPS
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-sg-alb' }
+
+  SGFrontend:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Frontend
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref SGAlb
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref SGBastion
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-sg-frontend' }
+
+  SGEfs:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EFS NFS
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref SGFrontend
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-sg-efs' }
+
+  SGInternalAlb:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB Interno - Recebe trafego web apenas do SG do Frontend
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref SGFrontend
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-sg-internal-alb' }
+
+  SGBackend:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Backend Spring Boot
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        # O backend só aceita requisições via Load Balancer Interno!
+        - IpProtocol: tcp
+          FromPort: !Ref BackendPort # 8080
+          ToPort: !Ref BackendPort
+          SourceSecurityGroupId: !Ref SGInternalAlb 
+        # Mantém o SSH via Bastion
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          SourceSecurityGroupId: !Ref SGBastion
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-sg-backend' }
+
+  SGRds:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RDS MySQL
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          SourceSecurityGroupId: !Ref SGBackend
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-sg-rds' }
+
+  # =========================================================================
+  # 5. INSTANCIAS EC2
+  # =========================================================================
+  InstanciaBastion:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestUbuntuAmiId
+      InstanceType: !Ref InstanceTypeBastion
+      SubnetId: !Ref PublicSubnetBastion
+      SecurityGroupIds:
+        - !Ref SGBastion
+      KeyName: !Ref KeyPairName
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-bastion' }
+
+  InstanciaFrontend1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestUbuntuAmiId
+      InstanceType: !Ref InstanceTypeFrontend
+      SubnetId: !Ref PrivateSubnetFrontend1a
+      SecurityGroupIds:
+        - !Ref SGFrontend
+      KeyName: !Ref KeyPairName
+      UserData: !Base64
+        Fn::Sub: | 
+          #!/bin/bash
+          apt-get update -y
+          apt-get install -y nginx nfs-common
+          # Montar o EFS (o DNS do EFS é gerado dinamicamente)
+          mkdir -p /var/www/html
+          mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${EFSFileSystem}.efs.${AWS::Region}.amazonaws.com:/ /var/www/html
+          systemctl start nginx
+          systemctl enable nginx
+          echo "<html><body><h1>Frontend 1 - AZ A (Nginx)</h1></body></html>" > /var/www/html/index.html
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-frontend-1a' }
+
+  InstanciaFrontend2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestUbuntuAmiId
+      InstanceType: !Ref InstanceTypeFrontend
+      SubnetId: !Ref PrivateSubnetFrontend1b
+      SecurityGroupIds:
+        - !Ref SGFrontend
+      KeyName: !Ref KeyPairName
+      UserData: !Base64
+        Fn::Sub: | 
+          #!/bin/bash
+          apt-get update -y
+          apt-get install -y nginx nfs-common
+          # Montar o EFS (o DNS do EFS é gerado dinamicamente)
+          mkdir -p /var/www/html
+          mount -t nfs4 -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport ${EFSFileSystem}.efs.${AWS::Region}.amazonaws.com:/ /var/www/html
+          systemctl start nginx
+          systemctl enable nginx
+          echo "<html><body><h1>Frontend 2 - AZ B (Nginx)</h1></body></html>" > /var/www/html/index.html
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-frontend-1b' }
+
+  InstanciaBackend1:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestUbuntuAmiId
+      InstanceType: !Ref InstanceTypeBackend
+      SubnetId: !Ref PrivateSubnetBackend1a
+      SecurityGroupIds:
+        - !Ref SGBackend
+      KeyName: !Ref KeyPairName
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-backend-1a' }
+
+  InstanciaBackend2:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref LatestUbuntuAmiId
+      InstanceType: !Ref InstanceTypeBackend
+      SubnetId: !Ref PrivateSubnetBackend1b
+      SecurityGroupIds:
+        - !Ref SGBackend
+      KeyName: !Ref KeyPairName
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-backend-1b' }
+
+  # =========================================================================
+  # 6. EFS
+  # =========================================================================
+  EFSFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      PerformanceMode: generalPurpose
+      Encrypted: true
+      FileSystemTags:
+        - { Key: Name, Value: !Sub '${ProjectName}-efs' }
+
+  EFSMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Ref PrivateSubnetFrontend1a
+      SecurityGroups: [!Ref SGEfs]
+
+  EFSMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Ref PrivateSubnetFrontend1b
+      SecurityGroups: [!Ref SGEfs]
+
+  # =========================================================================
+  # 7. RDS MYSQL
+  # =========================================================================
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: !Sub "Subnet group para RDS ${ProjectName}"
+      SubnetIds:
+        - !Ref PrivateSubnetDb1a
+        - !Ref PrivateSubnetDb1b
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-rds-subnet-group' }
+
+  RDSInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBInstanceIdentifier: !Sub "${ProjectName}-mysql"
+      DBInstanceClass: !Ref DBInstanceClass
+      Engine: mysql
+      EngineVersion: "8.0.46"
+      MasterUsername: !Ref DBMasterUsername
+      MasterUserPassword: !Ref DBMasterPassword
+      DBName: !Ref DBName
+      AllocatedStorage: 20
+      StorageType: gp3
+      StorageEncrypted: true
+      VPCSecurityGroups:
+        - !Ref SGRds
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      # -----------------------------------------------------------------
+      # CORREÇÃO CRÍTICA #2: MultiAZ habilitado.
+      # Antes: MultiAZ: false -> mesmo com DBSubnetGroup cobrindo 2 AZs,
+      #        não existia standby nem failover automático. A arquitetura
+      #        se dizia "Multi-AZ" mas o banco era single-AZ na prática.
+      # Agora: MultiAZ: true -> RDS provisiona automaticamente uma
+      #        instância standby síncrona na outra AZ do DBSubnetGroup e
+      #        faz failover automático em caso de falha da AZ primária.
+      # Custo: aprox. dobra o custo do RDS (instância + storage
+      #        replicados). Se o objetivo for só demonstrar o conceito
+      #        em ambiente de lab, avaliar se vale manter true (custo)
+      #        ou documentar explicitamente como false + trade-off
+      #        assumido na apresentação.
+      # -----------------------------------------------------------------
+      MultiAZ: true
+      PubliclyAccessible: false
+      BackupRetentionPeriod: 7
+      DeletionProtection: false # Setar false temporariamente para facilitar delecao do lab
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-mysql' }
+
+  # =========================================================================
+  # 8. LOAD BALANCER E TARGET GROUP
+  # =========================================================================
+  FrontendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-frontend-tg'
+      Port: 80
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: instance
+      Targets:
+        - Id: !Ref InstanciaFrontend1
+        - Id: !Ref InstanciaFrontend2
+      HealthCheckPath: /
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-frontend-tg' }
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnetBastion
+        - !Ref PublicSubnetAlb
+      SecurityGroups:
+        - !Ref SGAlb
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-alb' }
+
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref FrontendTargetGroup
+
+  BackendTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-backend-tg'
+      Port: !Ref BackendPort
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: instance
+      Targets:
+        - Id: !Ref InstanciaBackend1
+        - Id: !Ref InstanciaBackend2
+      HealthCheckPath: / 
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-backend-tg' }
+
+  InternalLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-internal-alb'
+      Scheme: internal # Fundamental: não expõe o ALB para a internet
+      Type: application
+      Subnets:
+        - !Ref PrivateSubnetBackend1a
+        - !Ref PrivateSubnetBackend1b
+      SecurityGroups:
+        - !Ref SGInternalAlb
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-internal-alb' }
+
+  InternalALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref InternalLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref BackendTargetGroup
+
+  # =========================================================================
+  # 9. AMBIENTE CLOUD PARA ANALISE DE DADOS (S3) - Componente de Nuvem
+  # -------------------------------------------------------------------------
+  # Camada de armazenamento separada da aplicação transacional (RDS), para
+  # suportar análise de dadoS
+  # Segue o padrão de data lake em 3 camadas:
+  #   - BRONZE: dados brutos exportados do RDS (ou de outras origens),
+  #     sem transformação, imutáveis.
+  #   - SILVER: dados limpos/tratados/transformados a partir do BRONZE.
+  #   - GOLD:   dados curados, prontos para consumo (Dashboard Graphana).
+  # =========================================================================
+  DataLakeBronzeBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-datalake-bronze-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransicaoParaInfrequentAccess
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: STANDARD_IA
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-datalake-bronze' }
+        - { Key: Camada, Value: bronze }
+
+  DataLakeSilverBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-datalake-silver-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-datalake-silver' }
+        - { Key: Camada, Value: silver }
+
+  DataLakeGoldBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-datalake-gold-${AWS::AccountId}-${AWS::Region}'
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - { Key: Name, Value: !Sub '${ProjectName}-datalake-gold' }
+        - { Key: Camada, Value: gold }
+
+Outputs:
+  WebsiteURL:
+    Description: URL do Load Balancer
+    Value: !Join ['', ['http://', !GetAtt ApplicationLoadBalancer.DNSName]]
+
+  BastionPublicIP:
+    Description: IP Publico do Bastion Host para SSH
+    Value: !GetAtt InstanciaBastion.PublicIp
+
+  DataLakeBronzeBucketName:
+    Description: Bucket S3 - camada BRONZE do ambiente de analise de dados
+    Value: !Ref DataLakeBronzeBucket
+
+  DataLakeSilverBucketName:
+    Description: Bucket S3 - camada SILVER do ambiente de analise de dados
+    Value: !Ref DataLakeSilverBucket
+
+  DataLakeGoldBucketName:
+    Description: Bucket S3 - camada GOLD do ambiente de analise de dados
+    Value: !Ref DataLakeGoldBucket
+
+  InternalBackendURL:
+    Description: DNS do Load Balancer Interno (Usar no Frontend para chamar a API)
+    Value: !Join ['', ['http://', !GetAtt InternalLoadBalancer.DNSName]]
