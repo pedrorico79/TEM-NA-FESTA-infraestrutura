@@ -1,0 +1,45 @@
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - LOCALSTACK_AUTH_TOKEN=${LOCALSTACK_AUTH_TOKEN}
+      - SERVICES=s3,sqs,dynamodb,ec2,elbv2
+      - DEBUG=1
+      - PERSISTENCE=1
+    volumes:
+      - "./localstack-data:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
+  # Containers simulando as instâncias frontend 
+
+  frontend1:
+    image: nginx:alpine
+    container_name: frontend1
+    volumes:
+      - "./frontend1:/usr/share/nginx/html:ro"
+    expose:
+      - "80"
+
+  frontend2:
+    image: nginx:alpine
+    container_name: frontend2
+    volumes:
+      - "./frontend2:/usr/share/nginx/html:ro"
+    expose:
+      - "80"
+
+# ALB simulado com Nginx como balanceador de carga
+
+  nginx-lb:
+    image: nginx:alpine
+    container_name: nginx-lb
+    depends_on:
+      - frontend1
+      - frontend2
+    volumes:
+      - "./nginx-lb/default.conf:/etc/nginx/conf.d/default.conf:ro"
+    ports:
+      - "8080:80"
