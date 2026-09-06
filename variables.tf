@@ -27,6 +27,18 @@ variable "instance_type_frontend" {
   default     = "t3.micro"
 }
 
+variable "frontend_repository_url" {
+  description = "URL pública do repositório Git do frontend."
+  type        = string
+  default     = "https://github.com/pedrorico79/TEM-NA-FESTA-frontend.git"
+}
+
+variable "frontend_repository_branch" {
+  description = "Branch do frontend implantada nas instâncias EC2."
+  type        = string
+  default     = "feat/aws-deploy"
+}
+
 variable "instance_type_backend" {
   description = "Tipo de instância EC2 do Backend."
   type        = string
@@ -43,6 +55,30 @@ variable "backend_port" {
   description = "Porta em que a aplicação backend (Spring Boot) escuta."
   type        = number
   default     = 8080
+}
+
+variable "backend_repository_url" {
+  description = "URL pública do repositório Git do backend."
+  type        = string
+  default     = "https://github.com/pedrorico79/TEM-NA-FESTA-backend.git"
+}
+
+variable "backend_repository_branch" {
+  description = "Branch do backend implantada nas instâncias EC2."
+  type        = string
+  default     = "refactor/clean-dev"
+}
+
+variable "database_repository_url" {
+  description = "URL pública do repositório Git com os scripts SQL."
+  type        = string
+  default     = "https://github.com/pedrorico79/TEM-NA-FESTA-database.git"
+}
+
+variable "database_repository_branch" {
+  description = "Branch do repositório de banco usada na inicialização do RDS."
+  type        = string
+  default     = "feat/aws-deploy"
 }
 
 variable "db_instance_class" {
@@ -74,8 +110,25 @@ variable "db_master_password" {
   }
 }
 
+variable "jwt_secret" {
+  description = "Chave usada pelo backend para assinar tokens JWT (mínimo 32 caracteres)."
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.jwt_secret) >= 32
+    error_message = "A chave JWT deve ter pelo menos 32 caracteres."
+  }
+}
+
 variable "vpc_cidr" {
   description = "CIDR block da VPC."
   type        = string
   default     = "10.0.0.0/24"
+}
+
+variable "enable_datalake" {
+  description = "Controla a criação dos buckets S3 do data lake. Deve permanecer false no AWS Student enquanto houver restrição de Object Lock."
+  type        = bool
+  default     = false
 }

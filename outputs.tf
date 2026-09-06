@@ -10,17 +10,17 @@ output "bastion_public_ip" {
 
 output "datalake_bronze_bucket_name" {
   description = "Bucket S3 - camada BRONZE do ambiente de análise de dados"
-  value       = aws_s3_bucket.datalake_bronze.id
+  value       = var.enable_datalake ? aws_s3_bucket.datalake_bronze[0].id : null
 }
 
 output "datalake_silver_bucket_name" {
   description = "Bucket S3 - camada SILVER do ambiente de análise de dados"
-  value       = aws_s3_bucket.datalake_silver.id
+  value       = var.enable_datalake ? aws_s3_bucket.datalake_silver[0].id : null
 }
 
 output "datalake_gold_bucket_name" {
   description = "Bucket S3 - camada GOLD do ambiente de análise de dados"
-  value       = aws_s3_bucket.datalake_gold.id
+  value       = var.enable_datalake ? aws_s3_bucket.datalake_gold[0].id : null
 }
 
 output "internal_backend_url" {

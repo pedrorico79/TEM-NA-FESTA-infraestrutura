@@ -1,0 +1,32 @@
+# Copie este arquivo para terraform.tfvars e ajuste os valores localmente.
+# O arquivo terraform.tfvars é ignorado pelo Git porque pode conter segredos.
+
+aws_region   = "us-east-1"
+project_name = "tem-na-festa"
+
+# A Key Pair precisa existir na mesma região usada pelo Terraform.
+key_pair_name = "tem-na-festa-key"
+
+# Substitua pelo seu IP público seguido de /32.
+bastion_ssh_cidr = "SEU_IP_PUBLICO/32"
+
+instance_type_frontend = "t3.micro"
+instance_type_backend  = "t3.micro"
+instance_type_bastion  = "t3.micro"
+backend_port           = 8080
+
+# Durante os testes, o backend será implantado a partir da branch de integração.
+frontend_repository_branch = "feat/aws-deploy"
+backend_repository_branch  = "refactor/clean-dev"
+database_repository_branch = "feat/aws-deploy"
+
+db_instance_class  = "db.t3.micro"
+db_name            = "temnafesta"
+db_master_username = "admin"
+db_master_password = "SUBSTITUA_POR_UMA_SENHA_FORTE"
+jwt_secret         = "SUBSTITUA_POR_UMA_CHAVE_JWT_COM_PELO_MENOS_32_CARACTERES"
+
+# O data lake fica desabilitado durante os testes no AWS Student.
+enable_datalake = false
+
+vpc_cidr = "10.0.0.0/24"

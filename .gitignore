@@ -1,0 +1,19 @@
+# Cache local dos providers e módulos
+.terraform/
+
+# State local e seus backups
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Planos salvos podem conter dados sensíveis
+*.tfplan
+
+# Variáveis locais podem conter senhas e outros segredos
+*.tfvars
+!*.tfvars.example
+
+# Logs de falha do Terraform
+crash.log
+crash.*.log
+
