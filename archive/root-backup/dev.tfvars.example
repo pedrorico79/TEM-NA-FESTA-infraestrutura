@@ -1,0 +1,9 @@
+# Exemplo de variáveis para ambiente dev
+project_name = "tem-na-festa-dev"
+aws_region = "us-east-1"
+key_pair_name = "SUA_KEY_PAIR_AQUI"
+# db_master_password e jwt_secret obrigatórios (substitua por valores seguros)
+db_master_password = "ChangeMe123!"
+jwt_secret = "change-this-to-a-32-plus-char-secret-xxxxxxxx"
+# Se estiver em ambiente com restrições, mantenha false
+enable_datalake = false

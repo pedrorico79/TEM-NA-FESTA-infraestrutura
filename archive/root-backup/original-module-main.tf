@@ -1,37 +1,6 @@
-# =============================================================================
-# Projeto Tem Na Festa (Grupo 03) - Infraestrutura AWS em Terraform
-# Convertido a partir do template CloudFormation original.
-#
-# Seções deste arquivo:
-#   0. Provider / Data Sources
-#   1. VPC e Gateways
-#   2. Subnets
-#   3. Route Tables
-#   4. Security Groups
-#   5. Instâncias EC2
-#   6. EFS
-#   7. RDS MySQL
-#   8. Load Balancers e Target Groups
-#   9. S3 - Data Lake (bronze/silver/gold)
-# =============================================================================
+# Módulo tem-na-festa: contém todos os recursos da infraestrutura
 
-terraform {
-  required_version = ">= 1.5.0"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = var.aws_region
-}
-# =========================================================================
 # 0. DATA SOURCES
-# =========================================================================
 data "aws_availability_zones" "available" {
   state = "available"
 }
@@ -526,11 +495,11 @@ locals {
     fi
 
     log "Clonando o backend da branch ${var.backend_repository_branch}"
-    retry git clone \
-      --depth 1 \
-      --single-branch \
-      --branch "${var.backend_repository_branch}" \
-      "${var.backend_repository_url}" \
+    retry git clone \\
+      --depth 1 \\
+      --single-branch \\
+      --branch "${var.backend_repository_branch}" \\
+      "${var.backend_repository_url}" \\
       "$BACKEND_DIR"
 
     log "Compilando o backend"
@@ -586,13 +555,13 @@ locals {
     log "Aguardando o RDS aceitar conexões"
     DATABASE_AVAILABLE="false"
     for attempt in $(seq 1 60); do
-      if mysql \
-        --connect-timeout=5 \
-        --protocol=TCP \
-        --host="$DB_HOST" \
-        --port="$DB_PORT" \
-        --user="$DB_USER" \
-        "$DB_NAME" \
+      if mysql \\
+        --connect-timeout=5 \\
+        --protocol=TCP \\
+        --host="$DB_HOST" \\
+        --port="$DB_PORT" \\
+        --user="$DB_USER" \\
+        "$DB_NAME" \\
         --execute="SELECT 1" >/dev/null 2>&1; then
         DATABASE_AVAILABLE="true"
         break
@@ -609,51 +578,51 @@ locals {
 
     if [ "$INITIALIZE_DATABASE" = "true" ]; then
       log "Clonando os scripts SQL da branch ${var.database_repository_branch}"
-      retry git clone \
-        --depth 1 \
-        --single-branch \
-        --branch "${var.database_repository_branch}" \
-        "${var.database_repository_url}" \
+      retry git clone \\
+        --depth 1 \\
+        --single-branch \\
+        --branch "${var.database_repository_branch}" \\
+        "${var.database_repository_url}" \\
         "$DATABASE_DIR"
 
-      SCHEMA_EXISTS="$(mysql \
-        --protocol=TCP \
-        --host="$DB_HOST" \
-        --port="$DB_PORT" \
-        --user="$DB_USER" \
-        --batch \
-        --skip-column-names \
+      SCHEMA_EXISTS="$(mysql \\
+        --protocol=TCP \\
+        --host="$DB_HOST" \\
+        --port="$DB_PORT" \\
+        --user="$DB_USER" \\
+        --batch \\
+        --skip-column-names \\
         --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name = 'perfil';")"
 
       if [ "$SCHEMA_EXISTS" = "0" ]; then
         log "Criando as tabelas no RDS"
-        mysql \
-          --protocol=TCP \
-          --host="$DB_HOST" \
-          --port="$DB_PORT" \
-          --user="$DB_USER" \
+        mysql \\
+          --protocol=TCP \\
+          --host="$DB_HOST" \\
+          --port="$DB_PORT" \\
+          --user="$DB_USER" \\
           "$DB_NAME" < "$DATABASE_DIR/script-bd-tem-na-festa.sql"
       else
         log "Estrutura do banco já existe; criação ignorada"
       fi
 
-      SEED_EXISTS="$(mysql \
-        --protocol=TCP \
-        --host="$DB_HOST" \
-        --port="$DB_PORT" \
-        --user="$DB_USER" \
-        --batch \
-        --skip-column-names \
-        "$DB_NAME" \
+      SEED_EXISTS="$(mysql \\
+        --protocol=TCP \\
+        --host="$DB_HOST" \\
+        --port="$DB_PORT" \\
+        --user="$DB_USER" \\
+        --batch \\
+        --skip-column-names \\
+        "$DB_NAME" \\
         --execute="SELECT COUNT(*) FROM perfil;")"
 
       if [ "$SEED_EXISTS" = "0" ]; then
         log "Inserindo os dados iniciais"
-        mysql \
-          --protocol=TCP \
-          --host="$DB_HOST" \
-          --port="$DB_PORT" \
-          --user="$DB_USER" \
+        mysql \\
+          --protocol=TCP \\
+          --host="$DB_HOST" \\
+          --port="$DB_PORT" \\
+          --user="$DB_USER" \\
           "$DB_NAME" < "$DATABASE_DIR/script-inserts-tem-na-festa.sql"
       else
         log "Dados iniciais já existem; inserção ignorada"
@@ -662,13 +631,13 @@ locals {
       log "Aguardando o backend principal preparar o banco"
       SCHEMA_AVAILABLE="false"
       for attempt in $(seq 1 60); do
-        TABLE_COUNT="$(mysql \
-          --protocol=TCP \
-          --host="$DB_HOST" \
-          --port="$DB_PORT" \
-          --user="$DB_USER" \
-          --batch \
-          --skip-column-names \
+        TABLE_COUNT="$(mysql \\
+          --protocol=TCP \\
+          --host="$DB_HOST" \\
+          --port="$DB_PORT" \\
+          --user="$DB_USER" \\
+          --batch \\
+          --skip-column-names \\
           --execute="SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '$DB_NAME' AND table_name = 'perfil';")"
 
         if [ "$TABLE_COUNT" = "1" ]; then
@@ -758,9 +727,9 @@ locals {
     fi
 
     if ! mountpoint -q "$WEB_ROOT"; then
-      retry mount -t nfs4 \
-        -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport \
-        "$EFS_DNS:/" \
+      retry mount -t nfs4 \\
+        -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport \\
+        "$EFS_DNS:/" \\
         "$WEB_ROOT"
     fi
 
@@ -806,11 +775,11 @@ locals {
       fi
 
       log "Clonando o frontend da branch ${var.frontend_repository_branch}"
-      retry git clone \
-        --depth 1 \
-        --single-branch \
-        --branch "${var.frontend_repository_branch}" \
-        "${var.frontend_repository_url}" \
+      retry git clone \\
+        --depth 1 \\
+        --single-branch \\
+        --branch "${var.frontend_repository_branch}" \\
+        "${var.frontend_repository_url}" \\
         "$FRONTEND_DIR"
 
       log "Compilando o frontend"
@@ -825,11 +794,11 @@ locals {
       fi
 
       log "Publicando o build no EFS"
-      rsync \
-        --archive \
-        --delete \
-        --exclude=index.html \
-        "$FRONTEND_DIR/dist/" \
+      rsync \\
+        --archive \\
+        --delete \\
+        --exclude=index.html \\
+        "$FRONTEND_DIR/dist/" \\
         "$WEB_ROOT/"
       install -m 0644 "$FRONTEND_DIR/dist/index.html" "$WEB_ROOT/index.html"
     else

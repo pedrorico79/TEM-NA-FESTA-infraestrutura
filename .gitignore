@@ -12,6 +12,7 @@
 # Variáveis locais podem conter senhas e outros segredos
 *.tfvars
 !*.tfvars.example
+/environments/dev/*.tfvars
 
 # Logs de falha do Terraform
 crash.log
