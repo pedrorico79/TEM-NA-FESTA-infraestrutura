@@ -45,10 +45,10 @@ Antes do primeiro `apply`, é obrigatório criar a Key Pair usada pelas EC2:
 
 O Terraform associa essa chave ao bastion, aos dois frontends e aos dois backends. Ela permite acesso SSH para diagnóstico; as instâncias privadas são acessadas por meio do bastion. Mesmo que o SSH não seja usado durante o teste, o `apply` falhará se a Key Pair informada não existir nessa região.
 
-Crie a configuração privada:
+Crie a configuração privada dentro de /environments/dev:
 
 ```bash
-cp terraform.tfvars.example terraform.tfvars
+cp dev.auto.tfvars.example dev.auto.tfvars
 ```
 
 Descubra seu IP público:
@@ -57,14 +57,14 @@ Descubra seu IP público:
 curl -s https://checkip.amazonaws.com
 ```
 
-Edite `terraform.tfvars` e preencha:
+Edite `dev.auto.tfvars` e preencha:
 
 - `bastion_ssh_cidr` com o IP retornado seguido de `/32`;
 - `key_pair_name` com a Key Pair existente;
 - `db_master_password` com uma senha forte;
 - `jwt_secret` com uma chave aleatória de pelo menos 32 caracteres.
 
-Mantenha `enable_datalake = false` no AWS Student. O arquivo `terraform.tfvars` é privado e já está ignorado pelo Git.
+Mantenha `enable_datalake = false` no AWS Student. O arquivo `dev.auto.tfvars` é privado e já está ignorado pelo Git.
 
 ## 3. Validar e planejar
 
@@ -104,7 +104,7 @@ O comando também mostra `website_url`, `internal_backend_url` e `bastion_public
 ### Frontends no Load Balancer público
 
 ```bash
-FRONTEND_TG_ARN=$(aws elbv2 describe-target-groups --names tem-na-festa-frontend-tg --query 'TargetGroups[0].TargetGroupArn' --output text)
+$FRONTEND_TG_ARN = (aws elbv2 describe-target-groups --names tem-na-festa-dev-frontend-tg --query 'TargetGroups[0].TargetGroupArn' --output text).Trim()
 aws elbv2 describe-target-health --target-group-arn "$FRONTEND_TG_ARN" --query 'TargetHealthDescriptions[].{Instance:Target.Id,State:TargetHealth.State,Reason:TargetHealth.Reason}' --output table
 ```
 
@@ -113,7 +113,7 @@ Resultado esperado: duas instâncias com `State` igual a `healthy`.
 ### Backends no Load Balancer interno
 
 ```bash
-BACKEND_TG_ARN=$(aws elbv2 describe-target-groups --names tem-na-festa-backend-tg --query 'TargetGroups[0].TargetGroupArn' --output text)
+$BACKEND_TG_ARN = (aws elbv2 describe-target-groups --names tem-na-festa-dev-backend-tg --query 'TargetGroups[0].TargetGroupArn' --output text).Trim()
 aws elbv2 describe-target-health --target-group-arn "$BACKEND_TG_ARN" --query 'TargetHealthDescriptions[].{Instance:Target.Id,State:TargetHealth.State,Reason:TargetHealth.Reason}' --output table
 ```
 
