@@ -31,4 +31,4 @@ db_master_password = "SUBSTITUA_POR_UMA_SENHA_FORTE"
 jwt_secret         = "SUBSTITUA_POR_UMA_CHAVE_JWT_COM_PELO_MENOS_32_CARACTERES"
 
 # Outros Serviços
-enable_datalake    = true
+enable_datalake    = false
