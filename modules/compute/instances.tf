@@ -1,15 +1,4 @@
-# EC2 instances, IAM (SSM) e user-data com auto-join do Docker Swarm
-#
-# Fluxo:
-#   1. O manager (frontend_1) faz "swarm init" e grava o worker token no SSM (SecureString).
-#   2. Os workers leem o token do SSM (com retry) e fazem "swarm join" no IP privado do manager.
-#   3. Os rótulos são "engine labels" definidos em /etc/docker/daemon.json (sem passo manual).
-#      Nos serviços, use: --constraint 'engine.labels.camada==backend' (ou frontend).
-
-
-# ---------------------------------------------------------------------------
 # IAM: manager só escreve o token, workers só leem
-# ---------------------------------------------------------------------------
 
 data "aws_iam_policy_document" "ec2_assume" {
   statement {
@@ -28,54 +17,15 @@ locals {
   swarm_token_param_arn  = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter${local.swarm_token_param_name}"
 }
 
-# --- Manager (PutParameter) ---
-resource "aws_iam_role" "swarm_manager" {
-  name               = "${var.project_name}-swarm-manager"
-  assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
-}
-
-resource "aws_iam_role_policy" "swarm_manager_put_token" {
-  name = "${var.project_name}-swarm-manager-put-token"
-  role = aws_iam_role.swarm_manager.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ssm:PutParameter"]
-      Resource = local.swarm_token_param_arn
-    }]
-  })
-}
-
+# Para Learner Lab, usamos a role fornecida pelo lab em vez de criar novas.
 resource "aws_iam_instance_profile" "swarm_manager" {
   name = "${var.project_name}-swarm-manager"
-  role = aws_iam_role.swarm_manager.name
-}
-
-# --- Workers (GetParameter) ---
-resource "aws_iam_role" "swarm_worker" {
-  name               = "${var.project_name}-swarm-worker"
-  assume_role_policy = data.aws_iam_policy_document.ec2_assume.json
-}
-
-resource "aws_iam_role_policy" "swarm_worker_get_token" {
-  name = "${var.project_name}-swarm-worker-get-token"
-  role = aws_iam_role.swarm_worker.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = ["ssm:GetParameter"]
-      Resource = local.swarm_token_param_arn
-    }]
-  })
+  role = var.iam_instance_profile_name
 }
 
 resource "aws_iam_instance_profile" "swarm_worker" {
   name = "${var.project_name}-swarm-worker"
-  role = aws_iam_role.swarm_worker.name
+  role = var.iam_instance_profile_name
 }
 
 # ---------------------------------------------------------------------------
@@ -85,7 +35,7 @@ resource "aws_iam_instance_profile" "swarm_worker" {
 resource "aws_instance" "bastion" {
   ami                    = data.aws_ssm_parameter.ubuntu_ami.value
   instance_type          = var.instance_type_bastion
-  subnet_id              = aws_subnet.public_bastion.id
+  subnet_id              = var.public_bastion_subnet_id
   vpc_security_group_ids = [aws_security_group.bastion.id]
   key_name               = var.key_pair_name
 
@@ -105,7 +55,6 @@ locals {
     set -euo pipefail
     export DEBIAN_FRONTEND=noninteractive
 
-    # Engine label (definido antes do Docker subir pela primeira vez)
     mkdir -p /etc/docker
     echo '{"labels":["camada=frontend"]}' > /etc/docker/daemon.json
 
@@ -119,16 +68,14 @@ locals {
     snap install aws-cli --classic
 
     WEB_ROOT="/var/www/html"
-    EFS_DNS="${aws_efs_file_system.this.id}.efs.${var.aws_region}.amazonaws.com"
+    EFS_DNS="${var.efs_id}.efs.${var.aws_region}.amazonaws.com"
 
     install -d -m 0755 "$WEB_ROOT"
     echo "$EFS_DNS:/ $WEB_ROOT nfs4 defaults,_netdev,nofail,nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport 0 0" >> /etc/fstab
     mount -a
 
-    # Swarm
     docker swarm init --advertise-addr "$(hostname -I | awk '{print $1}')"
 
-    # Publica o worker token (SecureString) com retry
     PUBLISHED=0
     for i in $(seq 1 30); do
       if /snap/bin/aws ssm put-parameter \
@@ -154,7 +101,6 @@ locals {
     set -euo pipefail
     export DEBIAN_FRONTEND=noninteractive
 
-    # Engine label (definido antes do Docker subir pela primeira vez)
     mkdir -p /etc/docker
     echo '{"labels":["camada=frontend"]}' > /etc/docker/daemon.json
 
@@ -168,13 +114,12 @@ locals {
     snap install aws-cli --classic
 
     WEB_ROOT="/var/www/html"
-    EFS_DNS="${aws_efs_file_system.this.id}.efs.${var.aws_region}.amazonaws.com"
+    EFS_DNS="${var.efs_id}.efs.${var.aws_region}.amazonaws.com"
 
     install -d -m 0755 "$WEB_ROOT"
     echo "$EFS_DNS:/ $WEB_ROOT nfs4 defaults,_netdev,nofail,nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport 0 0" >> /etc/fstab
     mount -a
 
-    # Join no Swarm: relê o token a cada tentativa (cobre token antigo/manager ainda subindo)
     for i in $(seq 1 60); do
       TOKEN=$(/snap/bin/aws ssm get-parameter \
         --region ${var.aws_region} \
@@ -187,13 +132,10 @@ locals {
       sleep 10
     done
 
-    # Falha visível: cloud-init fica com status "error" se o join não aconteceu
     if [ "$(docker info --format '{{.Swarm.LocalNodeState}}')" != "active" ]; then
       echo "ERRO: este nó não entrou no Swarm" >&2
       exit 1
     fi
-
-    # Muda quando o manager é recriado, forçando a recriação dos workers junto: ${aws_instance.frontend_1.id}
   EOF
 
   # Worker Backend: Docker + cliente MySQL + join automático no Swarm.
@@ -202,7 +144,6 @@ locals {
     set -euo pipefail
     export DEBIAN_FRONTEND=noninteractive
 
-    # Engine label (definido antes do Docker subir pela primeira vez)
     mkdir -p /etc/docker
     echo '{"labels":["camada=backend"]}' > /etc/docker/daemon.json
 
@@ -215,7 +156,6 @@ locals {
     snap wait system seed.loaded
     snap install aws-cli --classic
 
-    # Join no Swarm: relê o token a cada tentativa (cobre token antigo/manager ainda subindo)
     for i in $(seq 1 60); do
       TOKEN=$(/snap/bin/aws ssm get-parameter \
         --region ${var.aws_region} \
@@ -228,13 +168,10 @@ locals {
       sleep 10
     done
 
-    # Falha visível: cloud-init fica com status "error" se o join não aconteceu
     if [ "$(docker info --format '{{.Swarm.LocalNodeState}}')" != "active" ]; then
       echo "ERRO: este nó não entrou no Swarm" >&2
       exit 1
     fi
-
-    # Muda quando o manager é recriado, forçando a recriação dos workers junto: ${aws_instance.frontend_1.id}
   EOF
 }
 
@@ -245,7 +182,7 @@ locals {
 resource "aws_instance" "frontend_1" {
   ami                         = data.aws_ssm_parameter.ubuntu_ami.value
   instance_type               = var.instance_type_frontend
-  subnet_id                   = aws_subnet.private_frontend_1a.id
+  subnet_id                   = var.private_frontend_subnet_ids[0]
   vpc_security_group_ids      = [aws_security_group.frontend.id, aws_security_group.swarm_comunicacao.id, aws_security_group.bastion.id]
   key_name                    = var.key_pair_name
   iam_instance_profile        = aws_iam_instance_profile.swarm_manager.name
@@ -257,14 +194,6 @@ resource "aws_instance" "frontend_1" {
     http_put_response_hop_limit = 1
   }
 
-  depends_on = [
-    aws_route.private_a_nat,
-    aws_route_table_association.private_frontend_1a,
-    aws_efs_mount_target.az_a,
-    aws_iam_role_policy.swarm_manager_put_token,
-    aws_db_instance.this
-  ]
-
   tags = {
     Name = "${var.project_name}-frontend-1a (Manager)"
   }
@@ -273,7 +202,7 @@ resource "aws_instance" "frontend_1" {
 resource "aws_instance" "frontend_2" {
   ami                         = data.aws_ssm_parameter.ubuntu_ami.value
   instance_type               = var.instance_type_frontend
-  subnet_id                   = aws_subnet.private_frontend_1b.id
+  subnet_id                   = var.private_frontend_subnet_ids[1]
   vpc_security_group_ids      = [aws_security_group.frontend.id, aws_security_group.swarm_comunicacao.id, aws_security_group.bastion.id]
   key_name                    = var.key_pair_name
   iam_instance_profile        = aws_iam_instance_profile.swarm_worker.name
@@ -285,13 +214,6 @@ resource "aws_instance" "frontend_2" {
     http_put_response_hop_limit = 1
   }
 
-  depends_on = [
-    aws_route.private_b_nat,
-    aws_route_table_association.private_frontend_1b,
-    aws_efs_mount_target.az_b,
-    aws_iam_role_policy.swarm_worker_get_token
-  ]
-
   tags = {
     Name = "${var.project_name}-frontend-1b (Worker)"
   }
@@ -300,7 +222,7 @@ resource "aws_instance" "frontend_2" {
 resource "aws_instance" "backend_1" {
   ami                         = data.aws_ssm_parameter.ubuntu_ami.value
   instance_type               = var.instance_type_backend
-  subnet_id                   = aws_subnet.private_backend_1a.id
+  subnet_id                   = var.private_backend_subnet_ids[0]
   vpc_security_group_ids      = [aws_security_group.backend.id, aws_security_group.swarm_comunicacao.id, aws_security_group.bastion.id]
   key_name                    = var.key_pair_name
   iam_instance_profile        = aws_iam_instance_profile.swarm_worker.name
@@ -311,13 +233,6 @@ resource "aws_instance" "backend_1" {
     http_tokens                 = "required"
     http_put_response_hop_limit = 1
   }
-
-  depends_on = [
-    aws_route.private_a_nat,
-    aws_route_table_association.private_backend_1a,
-    aws_db_instance.this,
-    aws_iam_role_policy.swarm_worker_get_token
-  ]
 
   tags = {
     Name = "${var.project_name}-backend-1a (Worker)"
@@ -327,7 +242,7 @@ resource "aws_instance" "backend_1" {
 resource "aws_instance" "backend_2" {
   ami                         = data.aws_ssm_parameter.ubuntu_ami.value
   instance_type               = var.instance_type_backend
-  subnet_id                   = aws_subnet.private_backend_1b.id
+  subnet_id                   = var.private_backend_subnet_ids[1]
   vpc_security_group_ids      = [aws_security_group.backend.id, aws_security_group.swarm_comunicacao.id, aws_security_group.bastion.id]
   key_name                    = var.key_pair_name
   iam_instance_profile        = aws_iam_instance_profile.swarm_worker.name
@@ -337,14 +252,7 @@ resource "aws_instance" "backend_2" {
   metadata_options {
     http_tokens                 = "required"
     http_put_response_hop_limit = 1
-  }
-
-  depends_on = [
-    aws_route.private_b_nat,
-    aws_route_table_association.private_backend_1b,
-    aws_db_instance.this,
-    aws_iam_role_policy.swarm_worker_get_token
-  ]
+}
 
   tags = {
     Name = "${var.project_name}-backend-1b (Worker)"
@@ -353,7 +261,6 @@ resource "aws_instance" "backend_2" {
 
 # ---------------------------------------------------------------------------
 # Limpeza: remove o parâmetro criado pelo manager no "terraform destroy"
-# (requer AWS CLI na máquina que roda o Terraform)
 # ---------------------------------------------------------------------------
 
 resource "terraform_data" "swarm_token_cleanup" {

@@ -4,7 +4,7 @@ resource "aws_lb_target_group" "frontend" {
   name        = "${var.project_name}-frontend-tg"
   port        = 80
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = var.vpc_id
   target_type = "instance"
 
   health_check {
@@ -35,8 +35,8 @@ resource "aws_lb" "public" {
   internal           = false
   load_balancer_type = "application"
   subnets = [
-    aws_subnet.public_bastion.id,
-    aws_subnet.public_alb.id,
+    var.public_bastion_subnet_id,
+    var.public_alb_subnet_id,
   ]
   security_groups = [aws_security_group.alb.id]
 

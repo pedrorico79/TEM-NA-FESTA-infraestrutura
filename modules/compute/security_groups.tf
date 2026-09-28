@@ -1,9 +1,8 @@
-# Security Groups
-
+# Security Groups (Apenas os de Compute/ALB)
 resource "aws_security_group" "bastion" {
   name        = "${var.project_name}-sg-bastion"
   description = "Bastion SSH"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description = "SSH"
@@ -28,7 +27,7 @@ resource "aws_security_group" "bastion" {
 resource "aws_security_group" "alb" {
   name        = "${var.project_name}-sg-alb"
   description = "ALB HTTP/HTTPS"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description = "HTTP"
@@ -61,7 +60,7 @@ resource "aws_security_group" "alb" {
 resource "aws_security_group" "frontend" {
   name        = "${var.project_name}-sg-frontend"
   description = "Frontend"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description     = "HTTP via ALB"
@@ -91,35 +90,10 @@ resource "aws_security_group" "frontend" {
   }
 }
 
-resource "aws_security_group" "efs" {
-  name        = "${var.project_name}-sg-efs"
-  description = "EFS NFS"
-  vpc_id      = aws_vpc.this.id
-
-  ingress {
-    description     = "NFS a partir do Frontend"
-    from_port       = 2049
-    to_port         = 2049
-    protocol        = "tcp"
-    security_groups = [aws_security_group.frontend.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.project_name}-sg-efs"
-  }
-}
-
 resource "aws_security_group" "swarm_comunicacao" {
   name        = "${var.project_name}-sg-swarm-comunicacao"
   description = "Regras de comunicacao interna do Docker Swarm"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description = "Swarm Cluster Management"
@@ -168,7 +142,7 @@ resource "aws_security_group" "swarm_comunicacao" {
 resource "aws_security_group" "backend" {
   name        = "${var.project_name}-sg-backend"
   description = "Backend Spring Boot e Worker Nodes"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = var.vpc_id
 
   ingress {
     description     = "SSH via Bastion"
@@ -187,30 +161,5 @@ resource "aws_security_group" "backend" {
 
   tags = {
     Name = "${var.project_name}-sg-backend"
-  }
-}
-
-resource "aws_security_group" "rds" {
-  name        = "${var.project_name}-sg-rds"
-  description = "RDS MySQL"
-  vpc_id      = aws_vpc.this.id
-
-  ingress {
-    description     = "MySQL a partir do Backend"
-    from_port       = 3306
-    to_port         = 3306
-    protocol        = "tcp"
-    security_groups = [aws_security_group.backend.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.project_name}-sg-rds"
   }
 }
