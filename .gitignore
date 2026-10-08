@@ -1,3 +1,7 @@
+# Stack env (contém DB_PASSWORD, JWT_SECRET, etc.)
+.env
+*.env
+
 # Cache local dos providers e módulos
 .terraform/
 

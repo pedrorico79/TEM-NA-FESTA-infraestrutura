@@ -1,8 +1,6 @@
-version: '3.8'
-
 services:
   frontend:
-    image: temnafesta/frontend:latest
+    image: buzzato/tem-na-festa-frontend:latest
     ports:
       - "80:80"
     networks:
@@ -19,9 +17,15 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "nginx-frontend"
 
   backend-som:
-    image: temnafesta/backend-som:latest
+    image: fehideki/tem-na-festa-backend:latest
     networks:
       - app-network
     deploy:
@@ -37,37 +41,70 @@ services:
       timeout: 10s
       retries: 3
     environment:
-      - SPRING_DATASOURCE_URL=jdbc:mysql://rds-endpoint:3306/temnafesta
-      - DB_USERNAME=${DB_USERNAME}
+      - DB_URL=${DB_URL}
+      - SPRING_DATASOURCE_URL=${DB_URL}
+      - DB_USER=${DB_USER}
+      - DB_USERNAME=${DB_USER}
+      - SPRING_DATASOURCE_USERNAME=${DB_USER}
       - DB_PASSWORD=${DB_PASSWORD}
+      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
+      - JWT_SECRET=${JWT_SECRET}
+      - APP_JWT_SECRET=${JWT_SECRET}
+      - PORT=8080
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "app-backend"
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    ports:
-      - "15672:15672"
     networks:
       - app-network
     deploy:
-      placement:
-        constraints:
-          - node.labels.camada == backend
-      restart_policy:
-        condition: on-failure
-
-  notificacoes-worker:
-    image: temnafesta/notificacoes:latest
-    networks:
-      - app-network
-    deploy:
-      replicas: 1
       placement:
         constraints:
           - node.labels.camada == backend
       restart_policy:
         condition: on-failure
     environment:
-      - RABBITMQ_HOST=rabbitmq
-      - DB_PASSWORD=${DB_PASSWORD}
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-guest}
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        tag: "rabbitmq"
+
+  # notificacoes-worker: ignorado por enquanto (microservice incompleto)
+  # Descomente quando o microservice tiver application.properties funcional
+  # notificacoes-worker:
+  #   image: temnafesta/notificacoes:latest
+  #   networks:
+  #     - app-network
+  #   deploy:
+  #     replicas: 1
+  #     placement:
+  #       constraints:
+  #         - node.labels.camada == backend
+  #     restart_policy:
+  #       condition: on-failure
+  #   environment:
+  #     - RABBITMQ_HOST=rabbitmq
+  #     - RABBITMQ_PORT=5672
+  #     - RABBITMQ_USER=${RABBITMQ_USER:-guest}
+  #     - RABBITMQ_PASSWORD=${RABBITMQ_PASSWORD:-guest}
+  #     - DB_URL=${DB_URL}
+  #     - DB_USER=${DB_USER}
+  #     - DB_PASSWORD=${DB_PASSWORD}
+  #   logging:
+  #     driver: json-file
+  #     options:
+  #       max-size: "10m"
+  #       max-file: "3"
+  #       tag: "app-microservice"
 
 networks:
   app-network:

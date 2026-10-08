@@ -1,0 +1,36 @@
+# Configurações do Ambiente: DEV
+project_name       = "tem-na-festa-dev"
+aws_region         = "us-east-1"
+key_pair_name      = "tem-na-festa-key"
+
+# Rede e Segurança
+vpc_cidr           = "10.0.0.0/24"
+# Substitua pelo seu IP público seguido de /32
+bastion_ssh_cidr   = "0.0.0.0/0"
+
+# Computação (EC2)
+instance_type_frontend = "t3.micro"
+instance_type_backend  = "t3.micro"
+instance_type_bastion  = "t3.micro"
+backend_port           = 8080
+
+# Repositórios (Branches)
+frontend_repository_branch = "feat/aws-deploy"
+backend_repository_branch  = "refactor/clean-dev"
+database_repository_branch = "feat/aws-deploy"
+
+backend_repository_url  = "https://github.com/pedrorico79/TEM-NA-FESTA-backend.git"
+frontend_repository_url = "https://github.com/pedrorico79/TEM-NA-FESTA-frontend.git"
+database_repository_url = "https://github.com/pedrorico79/TEM-NA-FESTA-database.git"
+
+# Banco de Dados e Segredos
+db_instance_class  = "db.t3.micro"
+db_name            = "temnafesta"
+db_master_username = "admin"
+db_master_password = "Sptech#2024"
+jwt_secret         = "zX9vP2mK4rT7wN1qL8jH5bS3fG6dX0yA9mC2nV7bS4kL1wR8pQ3tY5uX7zM2nB4V"
+
+# Outros Serviços
+enable_datalake    = false
+
+iam_instance_profile_name = "LabRole"
