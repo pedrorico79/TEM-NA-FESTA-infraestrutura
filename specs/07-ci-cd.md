@@ -1,6 +1,6 @@
 # 07 – CI/CD (imagens, deploy e validação da infra)
 
-Estado: **aprovado** (09/10/2026); ajustado em 10/10/2026 (testes T1 a T17 em 6; serviço desligado em 5.2; workflows antigos de ECR removidos na seção 2, auditoria item 7; etiqueta apontando para imagem que falhou, em 5.2, C5, C13 e C14, auditoria item 8; Dockerfile, variáveis `VITE_*` e ferramenta de saúde das imagens, em 2, 4.2, 4.3, 4.4, C15 a C17 e F10, auditoria item 14; trava de prod por branch no próprio workflow, em 4.2, 4.5, C18, C19 e F11, auditoria item 15) e em 11/10/2026 (verificação automática da rastreabilidade dos testes no CI, em 6, auditoria item 20). Decididos: repositórios do Docker Hub **públicos**; deploy manual **em cada repositório da aplicação**, escolhendo ambiente e branch; o Swarm percebe a nova versão sozinho, sem credenciais da AWS no GitHub; estratégia de tags; CI da infra. Faltam apenas dados de entrada (seção 11).
+Estado: **aprovado** (09/10/2026); ajustado em 10/10/2026 (testes T1 a T17 em 6; serviço desligado em 5.2; workflows antigos de ECR removidos na seção 2, auditoria item 7; etiqueta apontando para imagem que falhou, em 5.2, C5, C13 e C14, auditoria item 8; Dockerfile, variáveis `VITE_*` e ferramenta de saúde das imagens, em 2, 4.2, 4.3, 4.4, C15 a C17 e F10, auditoria item 14; trava de prod por branch no próprio workflow, em 4.2, 4.5, C18, C19 e F11, auditoria item 15) e em 11/10/2026 (verificação automática da rastreabilidade dos testes no CI, em 6, auditoria item 20; disparo manual do `ci-infra.yml` em 6, decidido na E1). Decididos: repositórios do Docker Hub **públicos**; deploy manual **em cada repositório da aplicação**, escolhendo ambiente e branch; o Swarm percebe a nova versão sozinho, sem credenciais da AWS no GitHub; estratégia de tags; CI da infra. Faltam apenas dados de entrada (seção 11).
 Depende de: 01 (RF-09, RF-10), 03 (`image_tags`, `dockerhub_namespace`), 04 (convergência), 06 (stacks e política de atualização), 08 (rastreabilidade, seção 7).
 
 ## 1. Escopo
@@ -138,7 +138,7 @@ O workflow **não enxerga o Swarm** (não há credenciais da AWS no GitHub). Ele
 | Proteger prod só com recursos do GitHub (*Environments* com revisor e *branch protection*) | dependem do plano e da visibilidade do repositório; a trava dentro do workflow vale em qualquer caso (4.5) |
 
 ## 6. Validação do repositório de infra (CI) (*Decidido*)
-Workflow **`ci-infra.yml`** no `TEM-NA-FESTA-infraestrutura`, em cada pull request e push na `main`, **sem credenciais da AWS**:
+Workflow **`ci-infra.yml`** no `TEM-NA-FESTA-infraestrutura`, em cada pull request e push na `main`, e também **manualmente** (`workflow_dispatch`, escolhendo a branch em Actions → ci-infra → Run workflow), para conferir uma branch sem abrir PR (por exemplo, o C10), **sem credenciais da AWS**:
 | Verificação | Ferramenta |
 |---|---|
 | Formatação | `terraform fmt -check -recursive` |
@@ -165,7 +165,7 @@ Workflow **`ci-infra.yml`** no `TEM-NA-FESTA-infraestrutura`, em cada pull reque
 | C7 | `reuse_tag` inexistente | o workflow falha antes de mover qualquer etiqueta |
 | C8 | Conferir os *secrets* e os workflows de todos os repositórios | nenhuma credencial da AWS em nenhum deles e nenhum workflow de ECR restante |
 | C9 | `infra up` de um ambiente novo | os nós baixam as imagens sem fazer login e as stacks sobem (as dos serviços ligados) |
-| C10 | Abrir um PR com `manager_count = 2` em `envs/dev` | o `ci-infra.yml` falha com a mensagem de T5 |
+| C10 | Abrir um PR com `manager_count = 2` em `envs/dev`, ou rodar o `ci-infra.yml` manualmente numa branch com essa mudança | o `ci-infra.yml` falha com a mensagem de T5 |
 | C11 | Executar o `ci-infra.yml` | passa sem nenhuma credencial da AWS |
 | C12 | Dois deploys simultâneos para o mesmo repositório e ambiente | o segundo espera o primeiro terminar |
 | C13 | Depois do C5, rodar `infra down` e `infra up` do ambiente com a etiqueta ainda apontando para a imagem ruim | em até cerca de 10 min depois do deploy, `converge.json` = `degraded` com a mensagem acionável para o serviço afetado; os demais serviços ficam saudáveis; o `infra up` imprime a mensagem e termina com código `3` |
