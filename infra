@@ -1,0 +1,199 @@
+#!/usr/bin/env bash
+# infra: comando principal do Tem Na Festa (08, seção 5).
+# Roda em bash; no Windows, dentro do WSL 2 com Ubuntu (08, seção 5.1).
+# Nesta versão (etapa E0 de 09) só existem `--help` e `doctor`; os demais
+# comandos chegam nas etapas indicadas em `infra --help`.
+set -euo pipefail
+
+INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=scripts/lib/common.sh
+source "$INFRA_ROOT/scripts/lib/common.sh"
+
+TF_MIN_VERSION="1.11.0"
+LAB_REGIONS="us-east-1 us-west-2"
+GUIDE="docs/primeiros-passos-windows.md"
+
+usage() {
+  cat <<'EOF'
+Uso: infra <comando> [opções]
+
+Comandos (a etapa de 09 em que cada um chega está entre parênteses):
+  doctor                       confere ferramentas, credenciais, região e o ambiente WSL (E0; aviso de sobras na E2)
+  session [minutos]            tempo restante da sessão do laboratório (E2)
+  bootstrap                    cria ou importa os buckets de state e bronze (E2)
+  init-secrets                 cria o secrets.env, só com a mensageria ligada (E8)
+  plan <env>                   mostra o plano do Terraform, sem criar nada (E3)
+  up <env> [--snapshot <id>]   cria ou atualiza o ambiente (E3)
+  status <env>                 situação dos nós, stacks, versões e ALB (E4a)
+  access <env> [--ip <ip>]     chave SSH e IP autorizado no bastion (E4a)
+  ssh <env> [nó]               SSH pelo bastion até o nó (E4a)
+  snapshot <env>               snapshot manual do banco (E4b)
+  snapshots <env>              lista os snapshots do ambiente (E4b)
+  down <env>                   destrói o ambiente, com snapshot final do banco (E3)
+
+Ambientes: dev, prod. Ajuda de um comando: infra <comando> --help
+Referência: specs/08-estrutura-do-repositorio.md, seção 5.
+EOF
+}
+
+usage_doctor() {
+  cat <<'EOF'
+Uso: infra doctor
+
+Confere, sem alterar nada:
+  - o ambiente: WSL e repositório fora de /mnt/c (08, seção 5.1);
+  - as ferramentas: Terraform 1.11 ou superior, AWS CLI v2, jq e curl, e as
+    de desenvolvimento (make, shellcheck, tflint, bats, yamllint);
+  - as credenciais do laboratório (aws sts get-caller-identity) e a região.
+Para cada item que faltar, diz o que fazer.
+Saída: 0 tudo certo; 2 há pendências.
+EOF
+}
+
+# --- doctor -----------------------------------------------------------------
+
+problems=0
+problem() { problems=$((problems + 1)); say_miss "$*"; }
+
+check_environment() {
+  if is_wsl; then
+    say_ok "rodando no WSL"
+  else
+    say_info "fora do WSL (Linux ou macOS nativos também funcionam)"
+  fi
+  if is_windows_mount "$INFRA_ROOT"; then
+    problem "o repositório está em $INFRA_ROOT, no disco do Windows (/mnt/...). Clone-o dentro do sistema de arquivos do WSL, por exemplo em ~/projetos (passo 3 de $GUIDE). Em /mnt/c as permissões 600 da chave SSH e do secrets.env não funcionam."
+  else
+    say_ok "repositório no sistema de arquivos do Linux ($INFRA_ROOT)"
+  fi
+}
+
+check_terraform() {
+  if ! command -v terraform >/dev/null 2>&1; then
+    problem "terraform: não encontrado. Instale o Terraform $TF_MIN_VERSION ou superior (passo 2.2 de $GUIDE)."
+    return
+  fi
+  local v
+  v="$(terraform version 2>/dev/null | head -n 1 | sed -n 's/^Terraform v\([0-9][0-9.]*\).*/\1/p')"
+  if [[ -z "$v" ]]; then
+    problem "terraform: não foi possível ler a versão. Reinstale pelo passo 2.2 de $GUIDE."
+  elif ! version_ge "$v" "$TF_MIN_VERSION" || version_ge "$v" "2.0.0"; then
+    problem "terraform $v: é preciso a versão $TF_MIN_VERSION ou superior, abaixo da 2.0 (08, seção 4.1). Atualize pelo passo 2.2 de $GUIDE."
+  else
+    say_ok "terraform $v"
+  fi
+}
+
+check_aws_cli() {
+  if ! command -v aws >/dev/null 2>&1; then
+    problem "aws: não encontrado. Instale o AWS CLI v2 (passo 2.3 de $GUIDE)."
+    return 1
+  fi
+  local v
+  v="$(aws --version 2>&1 | head -n 1 | sed -n 's/^aws-cli\/\([0-9][0-9.]*\).*/\1/p')"
+  if [[ "${v%%.*}" != "2" ]]; then
+    problem "aws ${v:-?}: é preciso o AWS CLI v2. Instale pelo passo 2.3 de $GUIDE."
+    return 1
+  fi
+  say_ok "aws-cli $v"
+}
+
+check_simple_tool() {
+  local tool="$1" hint="$2"
+  if command -v "$tool" >/dev/null 2>&1; then
+    say_ok "$tool"
+  else
+    problem "$tool: não encontrado. $hint"
+  fi
+}
+
+check_dev_tool() {
+  local tool="$1" hint="$2"
+  if command -v "$tool" >/dev/null 2>&1; then
+    say_ok "$tool"
+  else
+    say_warn "$tool: não encontrado; só é necessário para desenvolver (make check). $hint"
+  fi
+}
+
+check_credentials() {
+  local region
+  region="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
+  if [[ -z "$region" ]]; then
+    region="$(aws configure get region 2>/dev/null || true)"
+  fi
+  if [[ -z "$region" ]]; then
+    problem "região da AWS não configurada. Rode 'aws configure set region us-east-1' dentro do WSL (passo 4 de $GUIDE)."
+  elif [[ " $LAB_REGIONS " != *" $region "* ]]; then
+    problem "região $region: o laboratório só permite ${LAB_REGIONS// / ou } (03, T2). Rode 'aws configure set region us-east-1'."
+  else
+    say_ok "região $region"
+  fi
+
+  local out
+  if out="$(timeout 30 aws sts get-caller-identity --query Account --output text 2>&1)"; then
+    say_ok "credenciais do laboratório válidas (conta $out)"
+  else
+    problem "credenciais da AWS ausentes, inválidas ou vencidas. No Learner Lab, clique em Start Lab e em AWS Details, e cole o bloco [default] em ~/.aws/credentials dentro do WSL (passo 4 de $GUIDE). As credenciais configuradas no Windows não valem no WSL."
+  fi
+}
+
+cmd_doctor() {
+  case "${1:-}" in
+    -h | --help) usage_doctor; return 0 ;;
+    "") ;;
+    *) die "$EXIT_PRECONDITION" "opção desconhecida para doctor: $1 (use 'infra doctor --help')" ;;
+  esac
+
+  echo "== ambiente"
+  check_environment
+  echo "== ferramentas"
+  check_terraform
+  local aws_ok=0
+  check_aws_cli && aws_ok=1
+  check_simple_tool jq "Instale com 'sudo apt install -y jq'."
+  check_simple_tool curl "Instale com 'sudo apt install -y curl'."
+  check_dev_tool make "Instale com 'sudo apt install -y make'."
+  check_dev_tool shellcheck "Instale com 'sudo apt install -y shellcheck'."
+  check_dev_tool tflint "Instale pelo passo 2.4 de $GUIDE."
+  check_dev_tool bats "Instale com 'sudo apt install -y bats'."
+  check_dev_tool yamllint "Instale com 'sudo apt install -y yamllint'."
+  echo "== credenciais e região"
+  if [[ "$aws_ok" -eq 1 ]]; then
+    check_credentials
+  else
+    problem "credenciais não conferidas: instale o AWS CLI v2 primeiro."
+  fi
+  say_info "a procura de sobras da infraestrutura antiga na conta chega na etapa E2 (08, seção 5.2)."
+
+  echo
+  if [[ "$problems" -eq 0 ]]; then
+    echo "Tudo pronto."
+    return "$EXIT_OK"
+  fi
+  echo "$problems pendência(s). Corrija os itens [falta] acima e rode 'infra doctor' de novo."
+  return "$EXIT_PRECONDITION"
+}
+
+# --- comandos das próximas etapas ---------------------------------------------
+
+not_yet() {
+  die "$EXIT_PRECONDITION" "o comando '$1' ainda não está implementado; ele chega na etapa $2 do plano (specs/09-plano-de-implementacao.md)."
+}
+
+main() {
+  local cmd="${1:-}"
+  [[ $# -gt 0 ]] && shift
+  case "$cmd" in
+    "" | -h | --help | help) usage ;;
+    doctor) cmd_doctor "$@" ;;
+    session | bootstrap) not_yet "$cmd" E2 ;;
+    plan | up | down) not_yet "$cmd" E3 ;;
+    status | access | ssh) not_yet "$cmd" E4a ;;
+    snapshot | snapshots) not_yet "$cmd" E4b ;;
+    init-secrets) not_yet "$cmd" E8 ;;
+    *) die "$EXIT_PRECONDITION" "comando desconhecido: '$cmd'. Veja 'infra --help'." ;;
+  esac
+}
+
+main "$@"
