@@ -91,7 +91,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C8 | E5 | manual: conferir workflows e secrets dos repositórios (na E0, só o de infra: nenhum workflow de ECR) | pendente |
 | C9 | E8 | manual: no laboratório, infra up de ambiente novo baixa as imagens sem login | pendente |
 | C10 | E1 | manual: no GitHub Actions, PR de teste com manager_count = 2 em envs/dev | pendente |
-| C11 | E0 | manual: no GitHub Actions, execução do ci-infra.yml sem credenciais da AWS | pendente |
+| C11 | E0 | manual: no GitHub Actions, execução do ci-infra.yml sem credenciais da AWS | verificado |
 | C12 | E5 | manual: no GitHub Actions, conferência descrita em 07, C12 | pendente |
 | C13 | E7 | manual: no laboratório, infra down e infra up com a etiqueta ainda na imagem ruim | pendente |
 | C14 | E7 | manual: no GitHub Actions, deploy corrigido ou reuse_tag; manual: no laboratório, converge.json volta a ready | pendente |
@@ -102,7 +102,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C19 | E5 | manual: no GitHub Actions, conferência descrita em 07, C19 | pendente |
 | G1 | E0 | bats: tests/shell/infra-doctor.bats (G1) e manual: infra doctor num clone novo, com as credenciais do laboratório | verificado |
 | G2 | E0 | make check sem credenciais da AWS (local e no ci-infra.yml) | verificado |
-| G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | pendente |
+| G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | verificado |
 | G4 | E1 | bats: tests/shell/envs.bats (G4) | pendente |
 | G5 | E2 | manual: no laboratório, infra bootstrap duas vezes | pendente |
 | G6 | E2 | manual: no laboratório, tentar destruir o bootstrap com objetos nos buckets | pendente |
