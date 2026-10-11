@@ -1,0 +1,20 @@
+# Arquivos sensíveis e locais (08, seção 6). Nada daqui pode entrar no Git.
+
+# Segredos manuais (05, A5)
+secrets.env
+
+# Chave SSH privada (05, A6)
+.keys/
+*.pem
+
+# Estado e cache local do Terraform (inclui errored.tfstate)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# Cache local do infra (status, session.json, recovered/)
+.infra/
+
+# Valores locais; os de ambiente ficam em terraform.tfvars, sem segredos
+*.auto.tfvars
