@@ -13,14 +13,14 @@ SHELL := /usr/bin/env bash
 
 # Raízes do Terraform (08, seção 2). Uma raiz sem arquivos .tf é pulada.
 TF_ROOTS := bootstrap envs/dev envs/prod
-# Módulo onde rodam os testes do contrato (tests/contract, 03 seção 6).
-CONTRACT_MODULE := modules/environment
+# Testes do contrato (03, seção 6): cada run chama modules/environment com
+# o provedor AWS simulado de tests/contract/mocks.
 CONTRACT_TESTS := tests/contract
 # Arquivos YAML: compose files das stacks e o workflow do CI.
 YAML_DIRS := stacks .github
 YAMLLINT_CONFIG := {extends: default, rules: {line-length: disable, document-start: disable, truthy: {check-keys: false}}}
 
-.PHONY: help fmt fmt-check lint lint-tf lint-sh lint-yaml hygiene check-eol check-ignored check-lock test validate contract bats trace check
+.PHONY: help fmt fmt-check lint lint-tf lint-sh lint-yaml hygiene check-eol check-ignored check-lock test validate contract contract-envs bats trace check
 
 help:
 	@sed -n '1,9p' Makefile | sed 's/^# \{0,1\}//'
@@ -80,7 +80,7 @@ check-lock:
 	  echo "ERRO: raízes do Terraform sem .terraform.lock.hcl versionado:$$missing. Rode 'terraform init' na raiz e faça 'git add' do lock."; exit 2; \
 	fi; echo "ok"
 
-test: validate contract bats
+test: validate contract contract-envs bats
 
 validate:
 	@echo "== terraform validate"
@@ -95,9 +95,29 @@ validate:
 contract:
 	@echo "== terraform test (contrato)"
 	@if compgen -G "$(CONTRACT_TESTS)/*.tftest.hcl" >/dev/null; then \
-	  terraform -chdir="$(CONTRACT_MODULE)" init -backend=false -input=false >/dev/null; \
-	  terraform -chdir="$(CONTRACT_MODULE)" test -test-directory="../../$(CONTRACT_TESTS)"; \
+	  terraform -chdir="$(CONTRACT_TESTS)" init -backend=false -input=false >/dev/null; \
+	  terraform -chdir="$(CONTRACT_TESTS)" test -test-directory=.; \
 	else echo "sem testes do contrato ainda"; fi
+
+# Valores de cada envs/<env>/terraform.tfvars contra o contrato (C10). As
+# variáveis sem padrão ainda em branco ("") recebem um marcador só para este
+# teste, porque o plan as exige apenas a partir da E4a (03, seção 3.8).
+TFVARS_PLACEHOLDERS := dockerhub_namespace=marcador db_schema_repo_url=https://example.invalid/marcador.git db_schema_ref=marcador db_schema_path=marcador.sql
+
+contract-envs:
+	@echo "== terraform test (terraform.tfvars dos ambientes)"
+	@terraform -chdir="$(CONTRACT_TESTS)/envs" init -backend=false -input=false >/dev/null
+	@for e in dev prod; do \
+	  f="envs/$$e/terraform.tfvars"; \
+	  [[ -f "$$f" ]] || { echo "-- $$e: sem terraform.tfvars, pulado"; continue; }; \
+	  args=(-var-file="../../../$$f"); \
+	  for kv in $(TFVARS_PLACEHOLDERS); do \
+	    k="$${kv%%=*}"; \
+	    if grep -Eq "^[[:space:]]*$$k[[:space:]]*=[[:space:]]*\"\"" "$$f"; then args+=(-var="$$kv"); fi; \
+	  done; \
+	  echo "-- $$e"; \
+	  terraform -chdir="$(CONTRACT_TESTS)/envs" test -test-directory=. "$${args[@]}"; \
+	done
 
 bats:
 	@echo "== bats"
