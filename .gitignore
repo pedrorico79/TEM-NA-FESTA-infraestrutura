@@ -1,20 +1,20 @@
-# Cache local dos providers e módulos
-.terraform/
+# Arquivos sensíveis e locais (08, seção 6). Nada daqui pode entrar no Git.
 
-# State local e seus backups
+# Segredos manuais (05, A5)
+secrets.env
+
+# Chave SSH privada (05, A6)
+.keys/
+*.pem
+
+# Estado e cache local do Terraform (inclui errored.tfstate)
+.terraform/
 *.tfstate
 *.tfstate.*
-.terraform.tfstate.lock.info
-
-# Planos salvos podem conter dados sensíveis
-*.tfplan
-
-# Variáveis locais podem conter senhas e outros segredos
-*.tfvars
-!*.tfvars.example
-/environments/dev/*.tfvars
-
-# Logs de falha do Terraform
 crash.log
-crash.*.log
 
+# Cache local do infra (status, session.json, recovered/)
+.infra/
+
+# Valores locais; os de ambiente ficam em terraform.tfvars, sem segredos
+*.auto.tfvars
