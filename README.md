@@ -16,7 +16,7 @@ No Windows, prepare antes o WSL e as ferramentas com o guia [`docs/primeiros-pas
 
 Para destruir: `./infra down dev`. Todos os comandos estão em `./infra --help` e em [08, seção 5](specs/08-estrutura-do-repositorio.md).
 
-> **Situação atual:** etapa **E0** do plano ([09](specs/09-plano-de-implementacao.md)). Por enquanto só existe o `infra doctor`; os outros comandos dizem em que etapa chegam.
+> **Situação atual:** etapa **E1** do plano ([09](specs/09-plano-de-implementacao.md)): contrato de variáveis em `modules/environment`, com os testes T1 a T17. Por enquanto só existe o `infra doctor`; os outros comandos dizem em que etapa chegam.
 
 ## Para quem desenvolve
 
