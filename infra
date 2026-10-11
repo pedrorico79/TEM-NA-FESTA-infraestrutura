@@ -135,7 +135,27 @@ check_credentials() {
     say_ok "credenciais do laboratório válidas (conta $out)"
   else
     problem "credenciais da AWS ausentes, inválidas ou vencidas. No Learner Lab, clique em Start Lab e em AWS Details, e cole o bloco [default] em ~/.aws/credentials dentro do WSL (passo 4 de $GUIDE). As credenciais configuradas no Windows não valem no WSL."
+    return 1
   fi
+}
+
+# Sobras da infraestrutura antiga: só lista, nunca apaga (08, seção 5.2; G17).
+check_leftovers() {
+  local out
+  if ! out="$(list_leftovers 2>&1)"; then
+    say_warn "não foi possível procurar sobras na conta: ${out##*$'
+'}"
+    return 0
+  fi
+  if [[ -z "$out" ]]; then
+    say_ok "nenhuma sobra da infraestrutura antiga (EC2, NAT, Elastic IP, load balancer, RDS) nesta região"
+    return 0
+  fi
+  local kind id detail
+  while read -r kind id detail; do
+    say_warn "sobra provável: $kind $id ($detail)"
+  done <<<"$out"
+  say_warn "esses recursos não têm as etiquetas ManagedBy = terraform e Project = tem-na-festa. O infra não os apaga: remova-os à mão no console da AWS antes da E3, para não consumirem limites nem créditos (08, seção 5.2)."
 }
 
 cmd_doctor() {
@@ -159,12 +179,18 @@ cmd_doctor() {
   check_dev_tool bats "Instale com 'sudo apt install -y bats'."
   check_dev_tool yamllint "Instale com 'sudo apt install -y yamllint'."
   echo "== credenciais e região"
+  local creds_ok=0
   if [[ "$aws_ok" -eq 1 ]]; then
-    check_credentials
+    check_credentials && creds_ok=1
   else
     problem "credenciais não conferidas: instale o AWS CLI v2 primeiro."
   fi
-  say_info "a procura de sobras da infraestrutura antiga na conta chega na etapa E2 (08, seção 5.2)."
+  echo "== sobras da infraestrutura antiga"
+  if [[ "$creds_ok" -eq 1 ]] && command -v jq >/dev/null 2>&1; then
+    check_leftovers
+  else
+    say_info "procura de sobras pulada: precisa de credenciais válidas e do jq."
+  fi
 
   echo
   if [[ "$problems" -eq 0 ]]; then
@@ -173,6 +199,177 @@ cmd_doctor() {
   fi
   echo "$problems pendência(s). Corrija os itens [falta] acima e rode 'infra doctor' de novo."
   return "$EXIT_PRECONDITION"
+}
+
+# --- session ---------------------------------------------------------------------
+
+usage_session() {
+  cat <<'EOF'
+Uso: infra session [minutos]
+
+A AWS não informa quando as credenciais do laboratório vencem (08, seção 5.3).
+  infra session 90   registra que restam 90 minutos (leia o cronômetro do Learner Lab)
+  infra session      mostra quanto resta: o valor informado ou uma estimativa
+O registro fica em .infra/session.json, ligado a um resumo do token da sessão
+(nunca ao token). Antes de up, down e bootstrap, com menos de 20 minutos, o
+infra avisa e pede confirmação.
+EOF
+}
+
+cmd_session() {
+  case "${1:-}" in
+    -h | --help) usage_session; return 0 ;;
+  esac
+  command -v aws >/dev/null 2>&1 || die "$EXIT_PRECONDITION" "aws não encontrado. Rode 'infra doctor'."
+  command -v jq >/dev/null 2>&1 || die "$EXIT_PRECONDITION" "jq não encontrado. Rode 'infra doctor'."
+  if [[ $# -gt 1 ]]; then
+    die "$EXIT_PRECONDITION" "uso: infra session [minutos]"
+  fi
+  session_load
+  if [[ -z "$SESSION_HASH" ]]; then
+    say_info "as credenciais atuais não têm token de sessão (conta fora do laboratório): não há vencimento a acompanhar."
+    return 0
+  fi
+  if [[ $# -eq 1 ]]; then
+    if ! [[ "$1" =~ ^[0-9]+$ ]] || (($1 < 1 || $1 > SESSION_HOURS_MIN)); then
+      die "$EXIT_PRECONDITION" "minutos inválidos: '$1'. Informe um número de 1 a $SESSION_HOURS_MIN, lido no cronômetro do Learner Lab."
+    fi
+    SESSION_REPORTED_MIN="$1"
+    SESSION_REPORTED_AT="$(date +%s)"
+    session_save
+  fi
+  local rem kind
+  read -r rem kind < <(session_remaining)
+  if [[ "$kind" == "informado" ]]; then
+    echo "Restam cerca de $rem minuto(s) da sessão do laboratório (pelo valor informado)."
+  else
+    echo "Restam cerca de $rem minuto(s) da sessão do laboratório. É uma estimativa, contada desde a primeira vez que o infra viu estas credenciais; a sessão pode ter começado antes. Para o valor real: infra session <minutos>."
+  fi
+  if ((rem < SESSION_WARN_MIN)); then
+    say_warn "menos de $SESSION_WARN_MIN minutos: renove a sessão no Learner Lab antes de up, down ou bootstrap."
+  fi
+}
+
+# --- bootstrap -------------------------------------------------------------------
+
+usage_bootstrap() {
+  cat <<'EOF'
+Uso: infra bootstrap
+
+Cria, ou confirma que existem, o bucket do state e o bucket bronze (02, seção 2;
+05, B3). Roda uma vez por conta e é seguro repetir (G5).
+  - Um bucket que já existe é importado para o state, sem tocar nos objetos;
+    qualquer mudança num bucket existente é mostrada e só é aplicada com a sua
+    confirmação (G16).
+  - Na primeira vez o state nasce local e é migrado para
+    bootstrap/terraform.tfstate no próprio bucket de state (08, seção 5).
+Saída: 0 concluído; 2 pré-condição não atendida ou cancelado.
+EOF
+}
+
+BOOTSTRAP_DIR="$INFRA_ROOT/bootstrap"
+BOOTSTRAP_OVERRIDE="$BOOTSTRAP_DIR/backend_override.tf"
+BOOTSTRAP_LOCAL_STATE="$INFRA_ROOT/.infra/bootstrap-local.tfstate"
+
+tf_bootstrap() { terraform -chdir="$BOOTSTRAP_DIR" "$@"; }
+
+cmd_bootstrap() {
+  case "${1:-}" in
+    -h | --help) usage_bootstrap; return 0 ;;
+    "") ;;
+    *) die "$EXIT_PRECONDITION" "opção desconhecida para bootstrap: $1 (use 'infra bootstrap --help')" ;;
+  esac
+  command -v terraform >/dev/null 2>&1 || die "$EXIT_PRECONDITION" "terraform não encontrado. Rode 'infra doctor'."
+
+  # Credenciais, sessão, errored.tfstate e lock (08, seção 5.3).
+  "$INFRA_ROOT/scripts/preflight.sh" bootstrap
+
+  local account region bronze_region bronze state_bucket
+  account="$(aws sts get-caller-identity --query Account --output text)"
+  region="$(read_tfvar "$BOOTSTRAP_DIR/terraform.tfvars" region us-east-1)"
+  bronze_region="$(read_tfvar "$BOOTSTRAP_DIR/terraform.tfvars" bronze_bucket_region us-east-1)"
+  bronze="$(read_tfvar "$BOOTSTRAP_DIR/terraform.tfvars" bronze_bucket_name "bucket-bronze-$account-$bronze_region")"
+  state_bucket="tnf-tfstate-$account-$region"
+
+  local state_exists=0 bronze_exists=0 local_backend=0
+  aws s3api head-bucket --bucket "$state_bucket" >/dev/null 2>&1 && state_exists=1
+  aws s3api head-bucket --bucket "$bronze" >/dev/null 2>&1 && bronze_exists=1
+  echo "== buckets"
+  echo "state:  $state_bucket ($([[ $state_exists -eq 1 ]] && echo "já existe" || echo "será criado"))"
+  echo "bronze: $bronze ($([[ $bronze_exists -eq 1 ]] && echo "já existe" || echo "será criado"))"
+
+  echo "== terraform init"
+  if [[ "$state_exists" -eq 1 ]]; then
+    rm -f "$BOOTSTRAP_OVERRIDE"
+    tf_bootstrap init -input=false -reconfigure       -backend-config="bucket=$state_bucket" -backend-config="region=$region" >/dev/null
+  else
+    # Sem o bucket de state ainda: state local temporário, migrado no fim.
+    local_backend=1
+    mkdir -p "$(dirname "$BOOTSTRAP_LOCAL_STATE")"
+    cat >"$BOOTSTRAP_OVERRIDE" <<EOF
+# Gerado pelo infra bootstrap durante a primeira criação; removido no fim.
+terraform {
+  backend "local" {
+    path = "$BOOTSTRAP_LOCAL_STATE"
+  }
+}
+EOF
+    tf_bootstrap init -input=false -reconfigure >/dev/null
+  fi
+
+  # Buckets que já existem e não estão no state são importados (05, B3).
+  local in_state
+  in_state="$(tf_bootstrap state list 2>/dev/null || true)"
+  if [[ "$state_exists" -eq 1 ]] && ! grep -qx 'aws_s3_bucket.state' <<<"$in_state"; then
+    echo "== importando o bucket de state existente"
+    tf_bootstrap import -input=false aws_s3_bucket.state "$state_bucket"
+  fi
+  if [[ "$bronze_exists" -eq 1 ]] && ! grep -qx 'aws_s3_bucket.bronze' <<<"$in_state"; then
+    echo "== importando o bucket bronze existente (os objetos não são tocados)"
+    tf_bootstrap import -input=false aws_s3_bucket.bronze "$bronze"
+  fi
+
+  echo "== terraform plan"
+  local plan_file="$INFRA_ROOT/.infra/bootstrap.tfplan" rc=0
+  mkdir -p "$(dirname "$plan_file")"
+  tf_bootstrap plan -input=false -detailed-exitcode -out="$plan_file" || rc=$?
+  case "$rc" in
+    0)
+      rm -f "$plan_file"
+      say_ok "os buckets já estão como o bootstrap define; nada a alterar."
+      ;;
+    2)
+      if [[ "$state_exists" -eq 1 || "$bronze_exists" -eq 1 ]]; then
+        say_warn "o plano acima altera bucket(s) que já existiam. Os objetos nunca são apagados nem alterados, mas confira em especial políticas, regras de ciclo de vida e notificações que o Terraform substituiria (05, B3)."
+        if ! confirm "Aplicar o plano?"; then
+          rm -f "$plan_file"
+          die "$EXIT_PRECONDITION" "nada foi aplicado. Ajuste o bootstrap/ se a diferença não for esperada e rode 'infra bootstrap' de novo."
+        fi
+      fi
+      echo "== terraform apply"
+      tf_bootstrap apply -input=false "$plan_file"
+      rm -f "$plan_file"
+      ;;
+    *)
+      rm -f "$plan_file"
+      die "$EXIT_UNEXPECTED" "o terraform plan do bootstrap falhou; veja a mensagem acima."
+      ;;
+  esac
+
+  if [[ "$local_backend" -eq 1 ]]; then
+    echo "== migrando o state do bootstrap para s3://$state_bucket/bootstrap/terraform.tfstate"
+    rm -f "$BOOTSTRAP_OVERRIDE"
+    tf_bootstrap init -input=false -migrate-state -force-copy       -backend-config="bucket=$state_bucket" -backend-config="region=$region" >/dev/null
+    tf_bootstrap state list >/dev/null
+    if [[ -f "$BOOTSTRAP_LOCAL_STATE" ]]; then
+      mv "$BOOTSTRAP_LOCAL_STATE" "$BOOTSTRAP_LOCAL_STATE.migrado"
+    fi
+    say_ok "state migrado; a cópia local ficou em ${BOOTSTRAP_LOCAL_STATE#"$INFRA_ROOT"/}.migrado."
+  fi
+
+  echo
+  tf_bootstrap output
+  say_ok "bootstrap concluído."
 }
 
 # --- comandos das próximas etapas ---------------------------------------------
@@ -187,7 +384,8 @@ main() {
   case "$cmd" in
     "" | -h | --help | help) usage ;;
     doctor) cmd_doctor "$@" ;;
-    session | bootstrap) not_yet "$cmd" E2 ;;
+    session) cmd_session "$@" ;;
+    bootstrap) cmd_bootstrap "$@" ;;
     plan | up | down) not_yet "$cmd" E3 ;;
     status | access | ssh) not_yet "$cmd" E4a ;;
     snapshot | snapshots) not_yet "$cmd" E4b ;;

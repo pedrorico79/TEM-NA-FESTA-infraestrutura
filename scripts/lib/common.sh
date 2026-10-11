@@ -52,3 +52,141 @@ version_ge() {
   done
   return 0
 }
+
+# --- Sobras da infraestrutura antiga (08, seção 5.2; G17) ------------------------
+# list_leftovers: imprime, um por linha, "<tipo> <id> <nome>" dos recursos da
+# região atual SEM as etiquetas ManagedBy = terraform e Project = tem-na-festa.
+# Só lê; nunca apaga nada.
+
+# shellcheck disable=SC2016 # é um programa do jq, não uma expansão do bash
+_JQ_NOT_OURS='def ours: ((. // []) | map({(.Key): .Value}) | add // {}) as $t
+  | ($t.ManagedBy == "terraform" and $t.Project == "tem-na-festa");
+def name: ((. // []) | map(select(.Key == "Name")) | .[0].Value) // "-";'
+
+list_leftovers() {
+  aws ec2 describe-instances \
+    --filters Name=instance-state-name,Values=pending,running,stopping,stopped \
+    --output json |
+    jq -r "$_JQ_NOT_OURS"' .Reservations[].Instances[] | select(.Tags | ours | not)
+      | "ec2 \(.InstanceId) \(.Tags | name)"'
+
+  aws ec2 describe-nat-gateways --filter Name=state,Values=pending,available --output json |
+    jq -r "$_JQ_NOT_OURS"' .NatGateways[] | select(.Tags | ours | not)
+      | "nat \(.NatGatewayId) \(.Tags | name)"'
+
+  aws ec2 describe-addresses --output json |
+    jq -r "$_JQ_NOT_OURS"' .Addresses[] | select(.Tags | ours | not)
+      | "eip \(.AllocationId) \(.PublicIp)"'
+
+  local arns
+  arns="$(aws elbv2 describe-load-balancers --output json | jq -r '.LoadBalancers[].LoadBalancerArn')"
+  if [[ -n "$arns" ]]; then
+    # shellcheck disable=SC2086 # um ARN por palavra
+    aws elbv2 describe-tags --resource-arns $arns --output json |
+      jq -r "$_JQ_NOT_OURS"' .TagDescriptions[] | select(.Tags | ours | not)
+        | "alb \(.ResourceArn | split("/")[-2]) \(.ResourceArn)"'
+  fi
+
+  aws rds describe-db-instances --output json |
+    jq -r "$_JQ_NOT_OURS"' .DBInstances[] | select(.TagList | ours | not)
+      | "rds \(.DBInstanceIdentifier) \(.DBInstanceClass)"'
+}
+
+# --- Sessão do laboratório (08, seção 5.3; G21) -------------------------------------
+# A AWS não informa o vencimento das credenciais. O infra guarda em
+# .infra/session.json, ligado a um resumo do token (nunca o token), quando viu
+# a sessão pela primeira vez e, se você informou, quantos minutos restavam.
+
+readonly SESSION_HOURS_MIN=240   # duração da sessão do Learner Lab (4 h)
+readonly SESSION_WARN_MIN=20     # avisa com menos de 20 minutos
+export SESSION_HOURS_MIN SESSION_WARN_MIN
+
+session_file() { printf '%s/.infra/session.json' "$INFRA_ROOT"; }
+
+# session_token_hash: resumo do token de sessão atual, ou vazio sem token.
+session_token_hash() {
+  local token="${AWS_SESSION_TOKEN:-}"
+  if [[ -z "$token" ]]; then
+    token="$(aws configure get aws_session_token 2>/dev/null || true)"
+  fi
+  [[ -n "$token" ]] || return 0
+  printf '%s' "$token" | sha256sum | cut -c1-16
+}
+
+# session_load: lê o arquivo para a sessão atual, criando o registro na
+# primeira vez que vê o token. Define SESSION_HASH, SESSION_FIRST_SEEN,
+# SESSION_REPORTED_MIN e SESSION_REPORTED_AT (vazios se não houver).
+session_load() {
+  local now f
+  now="$(date +%s)"
+  f="$(session_file)"
+  SESSION_HASH="$(session_token_hash)"
+  SESSION_FIRST_SEEN="" SESSION_REPORTED_MIN="" SESSION_REPORTED_AT=""
+  [[ -n "$SESSION_HASH" ]] || return 0
+  if [[ -f "$f" ]] && [[ "$(jq -r '.token_hash // ""' "$f")" == "$SESSION_HASH" ]]; then
+    SESSION_FIRST_SEEN="$(jq -r '.first_seen // ""' "$f")"
+    SESSION_REPORTED_MIN="$(jq -r '.reported_minutes // ""' "$f")"
+    SESSION_REPORTED_AT="$(jq -r '.reported_at // ""' "$f")"
+  else
+    SESSION_FIRST_SEEN="$now"
+    session_save
+  fi
+}
+
+session_save() {
+  local f
+  f="$(session_file)"
+  mkdir -p "$(dirname "$f")"
+  jq -n --arg h "$SESSION_HASH" --arg fs "$SESSION_FIRST_SEEN" \
+    --arg rm "$SESSION_REPORTED_MIN" --arg ra "$SESSION_REPORTED_AT" \
+    '{token_hash: $h, first_seen: ($fs | tonumber? // null),
+      reported_minutes: ($rm | tonumber? // null), reported_at: ($ra | tonumber? // null)}' >"$f"
+}
+
+# session_remaining: imprime "<minutos> <informado|estimativa>", ou nada se as
+# credenciais não têm token de sessão (fora do laboratório).
+session_remaining() {
+  local now
+  now="$(date +%s)"
+  session_load
+  [[ -n "$SESSION_HASH" ]] || return 0
+  if [[ -n "$SESSION_REPORTED_MIN" && -n "$SESSION_REPORTED_AT" ]]; then
+    printf '%s informado\n' "$((SESSION_REPORTED_MIN - (now - SESSION_REPORTED_AT) / 60))"
+  else
+    printf '%s estimativa\n' "$((SESSION_HOURS_MIN - (now - SESSION_FIRST_SEEN) / 60))"
+  fi
+}
+
+# confirm <pergunta>: pergunta s/N no terminal; verdadeiro só com "s".
+confirm() {
+  local answer=""
+  printf '%s [s/N] ' "$1" >&2
+  read -r answer || true
+  [[ "$answer" == "s" || "$answer" == "S" ]]
+}
+
+# session_guard: antes de up, down e bootstrap. Com menos de 20 minutos (ou
+# estimativa vencida), avisa e pede confirmação; --yes não pula este aviso.
+session_guard() {
+  local rem kind
+  read -r rem kind < <(session_remaining) || true
+  [[ -n "${rem:-}" ]] || return 0
+  if ((rem < SESSION_WARN_MIN)); then
+    if [[ "$kind" == "estimativa" ]]; then
+      say_warn "pela estimativa, restam cerca de $rem minuto(s) da sessão do laboratório (a sessão pode ter começado antes). Informe o tempo real com 'infra session <minutos>'."
+    else
+      say_warn "restam cerca de $rem minuto(s) da sessão do laboratório. Se as credenciais vencerem no meio da operação, o state pode ficar travado (08, seção 5.3)."
+    fi
+    confirm "Continuar mesmo assim?" || die "$EXIT_PRECONDITION" "operação cancelada. Renove a sessão no Learner Lab, atualize as credenciais no WSL e rode de novo."
+  fi
+}
+
+# --- terraform.tfvars ----------------------------------------------------------------
+
+# read_tfvar <arquivo> <nome> <padrão>: valor simples (string ou número) de um tfvars.
+read_tfvar() {
+  local v
+  v="$(sed -n -E "s/^[[:space:]]*$2[[:space:]]*=[[:space:]]*\"?([^\"#]*)\"?[[:space:]]*(#.*)?$/\1/p" "$1" 2>/dev/null | tail -n 1)"
+  v="${v%"${v##*[![:space:]]}"}"
+  printf '%s' "${v:-$3}"
+}
