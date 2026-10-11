@@ -114,7 +114,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G12 | E0 | bats: tests/shell/repo-hygiene.bats (G12) e make check (check-lock) | verificado |
 | G13 | E0 | bats: tests/shell/infra-doctor.bats (G13) | verificado |
 | G14 | E0 | bats: tests/shell/repo-hygiene.bats (G14) e make check (check-eol) | verificado |
-| G15 | E0 | manual: um colega, ou você numa máquina Windows limpa, segue docs/primeiros-passos-windows.md até o infra doctor rodar | pendente |
+| G15 | E0 | manual: um colega, ou você numa máquina Windows limpa, segue docs/primeiros-passos-windows.md até o infra doctor rodar (dispensada pelo autor em 11/10/2026; considerada certa) | verificado |
 | G16 | E2 | bats: tests/shell/bootstrap.bats (G16) e manual: no laboratório, infra bootstrap com o bronze existente | pendente |
 | G17 | E2 | bats: tests/shell/infra-doctor.bats (G17) e manual: no laboratório, infra doctor lista as sobras | pendente |
 | G18 | E0 | manual: conferir a árvore de 08 seção 2, nenhum workflow de ECR e a tag legacy-pre-specs | verificado |
