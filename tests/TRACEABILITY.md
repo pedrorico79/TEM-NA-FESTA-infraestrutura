@@ -90,7 +90,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C7 | E5 | manual: no GitHub Actions, conferência descrita em 07, C7 | pendente |
 | C8 | E5 | manual: conferir workflows e secrets dos repositórios (na E0, só o de infra: nenhum workflow de ECR) | pendente |
 | C9 | E8 | manual: no laboratório, infra up de ambiente novo baixa as imagens sem login | pendente |
-| C10 | E1 | make contract-envs (tests/contract/envs/tfvars.tftest.hcl) e manual: no GitHub Actions, PR de teste com manager_count = 2 em envs/dev | pendente |
+| C10 | E1 | make contract-envs (tests/contract/envs/tfvars.tftest.hcl) e manual: no GitHub Actions, PR de teste ou execução manual numa branch com manager_count = 2 em envs/dev | pendente |
 | C11 | E0 | manual: no GitHub Actions, execução do ci-infra.yml sem credenciais da AWS | verificado |
 | C12 | E5 | manual: no GitHub Actions, conferência descrita em 07, C12 | pendente |
 | C13 | E7 | manual: no laboratório, infra down e infra up com a etiqueta ainda na imagem ruim | pendente |

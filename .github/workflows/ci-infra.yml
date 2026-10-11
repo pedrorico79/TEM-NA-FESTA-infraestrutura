@@ -1,6 +1,6 @@
 # Validação do repositório de infraestrutura (07, seção 6).
-# Roda em todo pull request e em push na main, sem nenhuma credencial da AWS
-# (C11). As verificações são as mesmas do `make check` local (08, seção 8),
+# Roda em todo pull request, em push na main e manualmente (Actions → ci-infra
+# → Run workflow, escolhendo a branch), sem nenhuma credencial da AWS (C11). As verificações são as mesmas do `make check` local (08, seção 8),
 # mais a varredura de segredos (RNF-03).
 name: ci-infra
 
@@ -8,6 +8,7 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
