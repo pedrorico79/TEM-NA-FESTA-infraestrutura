@@ -8,7 +8,7 @@ az_count        = 1
 nat_mode        = "single"
 web_node_count  = 1
 app_node_count  = 1
-manager_count   = 2
+manager_count   = 1
 bastion_enabled = true
 
 # Instâncias (03, seção 3.3).
