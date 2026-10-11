@@ -1,0 +1,58 @@
+# Validação do repositório de infraestrutura (07, seção 6).
+# Roda em todo pull request e em push na main, sem nenhuma credencial da AWS
+# (C11). As verificações são as mesmas do `make check` local (08, seção 8),
+# mais a varredura de segredos (RNF-03).
+name: ci-infra
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-infra-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: make check
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      - name: Instalar o Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.16.5"
+          terraform_wrapper: false
+
+      - name: Instalar o TFLint
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.64.0
+
+      - name: Instalar shellcheck, bats, yamllint e jq
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck bats yamllint jq
+
+      - name: Rodar make check
+        run: make check
+
+  secrets:
+    name: varredura de segredos
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Baixar o repositório
+        uses: actions/checkout@v4
+
+      # Varre os arquivos atuais; o conteúdo antigo fica só no histórico,
+      # preservado pela tag legacy-pre-specs (08, seção 5.2).
+      - name: Procurar segredos com o gitleaks
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo" zricethezav/gitleaks:v8.18.4 \
+            detect --no-git --source /repo --redact --verbose
