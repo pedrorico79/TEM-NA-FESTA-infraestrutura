@@ -9,30 +9,30 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 
 | ID | Etapa | Verificador | Situação |
 |---|---|---|---|
-| T1 | E1 | tests/contract/T1.tftest.hcl | pendente |
-| T2 | E1 | tests/contract/T2.tftest.hcl | pendente |
-| T3 | E1 | tests/contract/T3.tftest.hcl | pendente |
-| T4 | E1 | tests/contract/T4.tftest.hcl | pendente |
-| T5 | E1 | tests/contract/T5.tftest.hcl | pendente |
-| T6 | E1 | tests/contract/T6.tftest.hcl | pendente |
-| T7 | E1 | tests/contract/T7.tftest.hcl | pendente |
-| T8 | E1 | tests/contract/T8.tftest.hcl | pendente |
-| T9 | E1 | tests/contract/T9.tftest.hcl | pendente |
-| T10 | E1 | tests/contract/T10.tftest.hcl | pendente |
-| T11 | E1 | tests/contract/T11.tftest.hcl | pendente |
-| T12 | E1 | tests/contract/T12.tftest.hcl | pendente |
+| T1 | E1 | tests/contract/T1.tftest.hcl | verificado |
+| T2 | E1 | tests/contract/T2.tftest.hcl | verificado |
+| T3 | E1 | tests/contract/T3.tftest.hcl | verificado |
+| T4 | E1 | tests/contract/T4.tftest.hcl | verificado |
+| T5 | E1 | tests/contract/T5.tftest.hcl | verificado |
+| T6 | E1 | tests/contract/T6.tftest.hcl | verificado |
+| T7 | E1 | tests/contract/T7.tftest.hcl | verificado |
+| T8 | E1 | tests/contract/T8.tftest.hcl | verificado |
+| T9 | E1 | tests/contract/T9.tftest.hcl | verificado |
+| T10 | E1 | tests/contract/T10.tftest.hcl | verificado |
+| T11 | E1 | tests/contract/T11.tftest.hcl | verificado |
+| T12 | E1 | tests/contract/T12.tftest.hcl | verificado |
 | T13 | E4a | manual: no laboratório, ami_id de outra região dá erro do provedor (limitação documentada, não automatizada) | pendente |
-| T14 | E1 | tests/contract/T14.tftest.hcl | pendente |
-| T15 | E1 | tests/contract/T15.tftest.hcl | pendente |
-| T16 | E1 | tests/contract/T16.tftest.hcl | pendente |
-| T17 | E6 | tests/contract/T17.tftest.hcl | pendente |
+| T14 | E1 | tests/contract/T14.tftest.hcl | verificado |
+| T15 | E1 | tests/contract/T15.tftest.hcl | verificado |
+| T16 | E1 | tests/contract/T16.tftest.hcl | verificado |
+| T17 | E6 | tests/contract/T17.tftest.hcl | verificado |
 | S1 | E6 | manual: no laboratório, infra up dev do zero até o ALB responder 200, com o tempo medido | pendente |
 | S2 | E6 | manual: no laboratório, infra up repetido sem mudanças não altera nada | pendente |
 | S3 | E6 | manual: no laboratório, backend de 1 para 2 réplicas com infra up | pendente |
 | S4 | E4a | manual: no laboratório, parar o líder com manager_count = 3 | pendente |
 | S5 | E9 | manual: no laboratório, infra down e infra up com o banco restaurado do snapshot final | pendente |
 | S6 | E4a | manual: no laboratório, remover a rota da NAT durante a subida | pendente |
-| S7 | E1 | tests/contract/T4.tftest.hcl (mesmo verificador de T4) | pendente |
+| S7 | E1 | tests/contract/T4.tftest.hcl (mesmo verificador de T4: T4_managers_maior_que_nos_app_recusado) | verificado |
 | S8 | E7 | manual: no laboratório, mover a etiqueta do ambiente para uma imagem nova | pendente |
 | S9 | E4b | manual: no laboratório, reiniciar o timer de convergência ou trocar o líder sem repetir o db-init | pendente |
 | S10 | E4b | manual: no laboratório, primeira subida sem snapshot com o db-init | pendente |
@@ -72,13 +72,13 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | R6 | E6 | manual: no laboratório, conferência descrita em 06, R6 | pendente |
 | R7 | E7 | manual: no laboratório, conferência descrita em 06, R7 | pendente |
 | R8 | E7 | manual: no laboratório, conferência descrita em 06, R8 | pendente |
-| R9 | E6 | tests/contract/T14.tftest.hcl (mesmo verificador de T14) | pendente |
+| R9 | E6 | tests/contract/T14.tftest.hcl (mesmo verificador de T14) | verificado |
 | R10 | E6 | manual: no laboratório, conferência descrita em 06, R10 | pendente |
 | R11 | E6 | manual: no laboratório, conferência descrita em 06, R11 | pendente |
 | R12 | E8 | manual: no laboratório, conferência descrita em 06, R12 | pendente |
 | R13 | E7 | manual: no laboratório, conferência descrita em 06, R13 | pendente |
 | R14 | E8 | manual: no laboratório, conferência descrita em 06, R14 | pendente |
-| R15 | E6 | tests/contract/T17.tftest.hcl (mesmo verificador de T17) | pendente |
+| R15 | E6 | tests/contract/T17.tftest.hcl (mesmo verificador de T17) | verificado |
 | R16 | E6 | manual: no laboratório, conferência descrita em 06, R16 | pendente |
 | R17 | E8 | manual: no laboratório, conferência descrita em 06, R17 | pendente |
 | C1 | E5 | manual: no GitHub Actions, conferência descrita em 07, C1 | pendente |
@@ -90,7 +90,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C7 | E5 | manual: no GitHub Actions, conferência descrita em 07, C7 | pendente |
 | C8 | E5 | manual: conferir workflows e secrets dos repositórios (na E0, só o de infra: nenhum workflow de ECR) | pendente |
 | C9 | E8 | manual: no laboratório, infra up de ambiente novo baixa as imagens sem login | pendente |
-| C10 | E1 | manual: no GitHub Actions, PR de teste com manager_count = 2 em envs/dev | pendente |
+| C10 | E1 | make contract-envs (tests/contract/envs/tfvars.tftest.hcl) e manual: no GitHub Actions, PR de teste com manager_count = 2 em envs/dev | pendente |
 | C11 | E0 | manual: no GitHub Actions, execução do ci-infra.yml sem credenciais da AWS | verificado |
 | C12 | E5 | manual: no GitHub Actions, conferência descrita em 07, C12 | pendente |
 | C13 | E7 | manual: no laboratório, infra down e infra up com a etiqueta ainda na imagem ruim | pendente |
@@ -103,7 +103,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G1 | E0 | bats: tests/shell/infra-doctor.bats (G1) e manual: infra doctor num clone novo, com as credenciais do laboratório | verificado |
 | G2 | E0 | make check sem credenciais da AWS (local e no ci-infra.yml) | verificado |
 | G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | verificado |
-| G4 | E1 | bats: tests/shell/envs.bats (G4) | pendente |
+| G4 | E1 | bats: tests/shell/envs.bats (G4) | verificado |
 | G5 | E2 | manual: no laboratório, infra bootstrap duas vezes | pendente |
 | G6 | E2 | manual: no laboratório, tentar destruir o bootstrap com objetos nos buckets | pendente |
 | G7 | E2 | bats: tests/shell/infra.bats (G7) | pendente |
