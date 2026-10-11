@@ -100,7 +100,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C17 | E5 | manual: docker run com --entrypoint sh nas imagens publicadas | pendente |
 | C18 | E5 | manual: no GitHub Actions, conferência descrita em 07, C18 | pendente |
 | C19 | E5 | manual: no GitHub Actions, conferência descrita em 07, C19 | pendente |
-| G1 | E0 | bats: tests/shell/infra-doctor.bats (G1) e manual: infra doctor num clone novo, com as credenciais do laboratório | pendente |
+| G1 | E0 | bats: tests/shell/infra-doctor.bats (G1) e manual: infra doctor num clone novo, com as credenciais do laboratório | verificado |
 | G2 | E0 | make check sem credenciais da AWS (local e no ci-infra.yml) | verificado |
 | G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | pendente |
 | G4 | E1 | bats: tests/shell/envs.bats (G4) | pendente |
