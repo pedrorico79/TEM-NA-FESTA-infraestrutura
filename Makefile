@@ -82,13 +82,17 @@ check-lock:
 
 test: validate contract contract-envs bats
 
+# Usa uma pasta de dados temporária (TF_DATA_DIR) para não depender nem mexer
+# no .terraform/ que o infra inicializou com o backend real e credenciais.
 validate:
 	@echo "== terraform validate"
 	@for r in $(TF_ROOTS); do \
 	  if compgen -G "$$r/*.tf" >/dev/null; then \
 	    echo "-- $$r"; \
-	    terraform -chdir="$$r" init -backend=false -input=false >/dev/null; \
-	    terraform -chdir="$$r" validate; \
+	    d="$$(mktemp -d)"; \
+	    TF_DATA_DIR="$$d" terraform -chdir="$$r" init -backend=false -input=false >/dev/null; \
+	    rc=0; TF_DATA_DIR="$$d" terraform -chdir="$$r" validate || rc=$$?; \
+	    rm -rf "$$d"; [[ $$rc -eq 0 ]] || exit $$rc; \
 	  else echo "-- $$r: sem arquivos .tf, pulado"; fi; \
 	done
 

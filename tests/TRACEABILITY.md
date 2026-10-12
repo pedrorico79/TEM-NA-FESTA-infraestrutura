@@ -48,7 +48,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q6 | E9 | manual: no laboratório, conferência descrita em 05, Q6 | pendente |
 | Q7 | E4b | manual: no laboratório, conferência descrita em 05, Q7 | pendente |
 | Q8 | E8 | bats: tests/shell/secrets-env.bats (Q8) e manual: no laboratório, infra up com e sem secrets.env | pendente |
-| Q9 | E2 | manual: no laboratório, inspecionar os buckets de state e bronze | pendente |
+| Q9 | E2 | manual: no laboratório, inspecionar os buckets de state e bronze no console (12/10/2026: acesso público bloqueado, SSE-S3, só TLS e versionamento no state) | verificado |
 | Q10 | E6 | manual: no laboratório, conferência descrita em 05, Q10 | pendente |
 | Q11 | E4b | manual: no laboratório, conferência descrita em 05, Q11 | pendente |
 | Q12 | E7 | manual: no laboratório, conferência descrita em 05, Q12 | pendente |
@@ -104,9 +104,9 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G2 | E0 | make check sem credenciais da AWS (local e no ci-infra.yml) | verificado |
 | G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | verificado |
 | G4 | E1 | bats: tests/shell/envs.bats (G4) | verificado |
-| G5 | E2 | manual: no laboratório, infra bootstrap duas vezes | pendente |
-| G6 | E2 | manual: no laboratório, tentar destruir o bootstrap com objetos nos buckets | pendente |
-| G7 | E2 | bats: tests/shell/infra.bats (G7) | pendente |
+| G5 | E2 | bats: tests/shell/bootstrap.bats (G5) e manual: no laboratório, infra bootstrap duas vezes, a segunda sem mudanças (12/10/2026) | verificado |
+| G6 | E2 | manual: no laboratório, terraform destroy do bootstrap recusado pelo prevent_destroy, sem apagar nada (12/10/2026) | verificado |
+| G7 | E2 | bats: tests/shell/preflight.bats e tests/shell/bootstrap.bats (G7) | verificado |
 | G8 | E3 | bats: tests/shell/infra.bats (G8) | pendente |
 | G9 | E4a | manual: no laboratório, web_node_count de 2 para 3 no plan | pendente |
 | G10 | E9 | bats: tests/shell/check-traceability.bats (G10a a G10h) e make trace (STRICT=1 na E9) | pendente |
@@ -115,12 +115,12 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G13 | E0 | bats: tests/shell/infra-doctor.bats (G13) | verificado |
 | G14 | E0 | bats: tests/shell/repo-hygiene.bats (G14) e make check (check-eol) | verificado |
 | G15 | E0 | manual: um colega, ou você numa máquina Windows limpa, segue docs/primeiros-passos-windows.md até o infra doctor rodar (dispensada pelo autor em 11/10/2026; considerada certa) | verificado |
-| G16 | E2 | bats: tests/shell/bootstrap.bats (G16) e manual: no laboratório, infra bootstrap com o bronze existente | pendente |
-| G17 | E2 | bats: tests/shell/infra-doctor.bats (G17) e manual: no laboratório, infra doctor lista as sobras | pendente |
+| G16 | E2 | bats: tests/shell/bootstrap.bats (G16) e manual: no laboratório, infra bootstrap com o bronze existente e com objetos: nada a alterar e objeto preservado (12/10/2026) | verificado |
+| G17 | E2 | bats: tests/shell/doctor-leftovers.bats (G17) e manual: no laboratório, infra doctor lista as sobras (12/10/2026: nenhuma sobra na conta) | verificado |
 | G18 | E0 | manual: conferir a árvore de 08 seção 2, nenhum workflow de ECR e a tag legacy-pre-specs | verificado |
-| G19 | E2 | bats: tests/shell/preflight.bats (G19) e manual: no laboratório, errored.tfstate | pendente |
+| G19 | E2 | bats: tests/shell/preflight.bats (G19) | verificado |
 | G20 | E3 | manual: no laboratório, interromper um apply com kill -9 e recuperar o lock | pendente |
-| G21 | E2 | bats: tests/shell/preflight.bats (G21) | pendente |
+| G21 | E2 | bats: tests/shell/preflight.bats (G21) | verificado |
 | G22 | E4a | bats: tests/shell/preflight.bats (G22) e manual: no laboratório, mudar manager_count com o ambiente no ar | pendente |
 | G23 | E4b | bats: tests/shell/snapshots.bats (G23) | pendente |
 | G24 | E4a | bats: tests/shell/access.bats (G24) | pendente |
