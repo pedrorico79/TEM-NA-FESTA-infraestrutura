@@ -26,7 +26,6 @@ variable "project_name" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # provedor da raiz; usada pelos módulos a partir da E3
 variable "region" {
   description = "Região da AWS do ambiente."
   type        = string
@@ -76,7 +75,6 @@ variable "az_count" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo network (E3)
 variable "nat_mode" {
   description = "single (uma NAT, na AZ1) ou per_az (uma NAT por AZ ativa)."
   type        = string
@@ -193,7 +191,6 @@ variable "bastion_instance_type" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo compute (E4a)
 variable "root_volume_size_gb" {
   description = "Tamanho do volume raiz (gp3) das instâncias, em GB."
   type        = number
@@ -206,7 +203,6 @@ variable "root_volume_size_gb" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo compute (E4a)
 variable "ami_id" {
   description = "AMI Ubuntu 24.04 LTS. Se null, usa a mais recente da Canonical na região, no momento em que o nó é criado."
   type        = string
@@ -446,7 +442,6 @@ variable "db_schema_path" {
 
 # --- 3.6 Acesso e dados compartilhados -------------------------------------------
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo security (E3)
 variable "admin_ssh_cidrs" {
   description = "CIDRs IPv4 autorizados a fazer SSH no bastion. Vazia: o infra detecta o IP atual a cada operação."
   type        = list(string)
@@ -475,7 +470,6 @@ variable "ssh_private_key_path" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelos módulos compute e artifacts (E4a)
 variable "bronze_bucket_name" {
   description = "Bucket bronze. Se null, bucket-bronze-<id-da-conta>-<bronze_bucket_region>."
   type        = string
@@ -487,7 +481,6 @@ variable "bronze_bucket_name" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelos módulos compute e artifacts (E4a)
 variable "bronze_bucket_region" {
   description = "Região do bucket bronze (pode diferir de region)."
   type        = string
@@ -502,7 +495,6 @@ variable "bronze_bucket_region" {
 
 # --- 3.7 Segredos manuais --------------------------------------------------------
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo secrets (E4a), com a mensageria ligada
 variable "messaging_secrets" {
   description = "Segredos manuais do microsserviço (vindos do secrets.env). Chaves PENDENTES; só exigidos com a mensageria ligada."
   type        = map(string)
