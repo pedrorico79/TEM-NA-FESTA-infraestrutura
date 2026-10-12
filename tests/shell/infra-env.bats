@@ -8,6 +8,9 @@ setup() {
   fake_setup
   touch "$FIX/buckets/$STATE_BUCKET"
   session_json 0
+  env_ready dev
+  env_ready prod
+  export TNF_WAIT_INTERVAL=0 TNF_WAIT_TIMEOUT=0
 }
 
 @test "G8: infra down prod sem digitar o nome do ambiente não destrói nada e não chama o terraform" {
@@ -53,10 +56,10 @@ setup() {
   terraform_calls | grep -q "apply -auto-approve"
 }
 
-@test "up usa a raiz temporária da E3, o state em e3/<env> e os valores do ambiente" {
+@test "up usa a raiz envs/<env>, o state em envs/<env> e os valores do ambiente" {
   run "$REPO/infra" up dev --yes </dev/null
   [ "$status" -eq 0 ]
-  terraform_calls | grep -q "terraform -chdir=$REPO/tests/live/e3-network init -input=false -reconfigure -backend-config=bucket=$STATE_BUCKET -backend-config=region=us-east-1 -backend-config=key=e3/dev/terraform.tfstate"
+  terraform_calls | grep -q "terraform -chdir=$REPO/envs/dev init -input=false -reconfigure -backend-config=bucket=$STATE_BUCKET -backend-config=region=us-east-1 -backend-config=key=envs/dev/terraform.tfstate"
   terraform_calls | grep -q "apply -auto-approve -input=false -var-file=$REPO/envs/dev/terraform.tfvars"
 }
 
@@ -73,6 +76,70 @@ setup() {
   [ "$status" -eq 2 ]
   [[ "$output" == *"ambiente 'staging' desconhecido"* ]]
   [ -z "$(terraform_calls)" ]
+}
+
+@test "up detecta o IP, cria o bucket de artefatos, aplica e espera o ambiente ficar pronto" {
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 0 ]
+  grep -q "curl .*checkip.amazonaws.com" "$CALLS"
+  grep -q "aws s3api create-bucket --bucket tnf-dev-artifacts-000000000000-us-east-1" "$CALLS"
+  terraform_calls | grep -q 'apply -auto-approve .*-var=admin_ssh_cidrs=\["203.0.113.10/32"\]'
+  [[ "$output" == *"ambiente dev pronto"* ]]
+  [[ "$output" == *"Bastion: 203.0.113.5"* ]]
+}
+
+@test "up avisa quando o IP autorizado no bastion vai mudar" {
+  echo '["198.51.100.20/32"]' >"$FIX/tf-admin-cidrs.json"
+  run "$REPO/infra" up dev --yes </dev/null
+  [[ "$output" == *"o IP autorizado no bastion mudará de 198.51.100.20/32 para 203.0.113.10/32"* ]]
+}
+
+@test "up com admin_ssh_cidrs preenchida não passa o IP detectado" {
+  echo 'admin_ssh_cidrs = ["198.51.100.0/24"]' >>"$REPO/envs/dev/terraform.tfvars"
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 0 ]
+  ! terraform_calls | grep -q -- "-var=admin_ssh_cidrs"
+}
+
+@test "plan sem IP detectável pede --ip e não chama o plan" {
+  export FAKE_IP=""
+  run "$REPO/infra" plan dev </dev/null
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"Informe-o com --ip <ip>"* ]]
+  ! terraform_calls | grep -q " plan "
+}
+
+@test "up espera e termina com código 3 quando um nó falha" {
+  echo '{"state":"failed","step":"docker","message":"pacote não baixou"}' >"$FIX/s3/tnf-dev-artifacts-000000000000-us-east-1/status/nodes/tem-na-festa-dev-web-1.json"
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"o nó tem-na-festa-dev-web-1 falhou na etapa docker"* ]]
+  [[ "$output" == *"infra ssh dev web-1"* ]]
+}
+
+@test "S6: nó sem nenhum status (sem saída pela NAT) vira falha com mensagem clara, sem travar" {
+  rm "$FIX/s3/tnf-dev-artifacts-000000000000-us-east-1/status/nodes/tem-na-festa-dev-web-1.json"
+  export TNF_WAIT_SILENT=0
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"o nó tem-na-festa-dev-web-1 não deu nenhum sinal"*"rota da NAT"* ]]
+}
+
+@test "down apaga o bucket de artefatos depois do destroy" {
+  touch "$FIX/buckets/tnf-dev-artifacts-000000000000-us-east-1"
+  run "$REPO/infra" down dev --yes </dev/null
+  [ "$status" -eq 0 ]
+  grep -q "aws s3 rb s3://tnf-dev-artifacts-000000000000-us-east-1 --force" "$CALLS"
+}
+
+@test "infra status mostra os nós e a convergência" {
+  mkdir -p "$FIX/s3/tnf-dev-artifacts-000000000000-us-east-1"
+  echo 'EXPECTED_NODES=tem-na-festa-dev-web-1,tem-na-festa-dev-app-1' >"$FIX/s3/tnf-dev-artifacts-000000000000-us-east-1/stack.env"
+  run "$REPO/infra" status dev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"tem-na-festa-dev-app-1"*"joined"* ]]
+  [[ "$output" == *"tem-na-festa-dev-bastion"*"ready"* ]]
+  [[ "$output" == *"convergência"*"ready"* ]]
 }
 
 @test "falha do apply termina com código 1 e mensagem" {

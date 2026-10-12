@@ -57,3 +57,39 @@ output "ssh_private_key_path" {
   description = "Caminho local da chave SSH privada do ambiente."
   value       = local.ssh_private_key_path
 }
+
+output "artifacts_bucket" {
+  description = "Bucket de artefatos do ambiente."
+  value       = module.artifacts.bucket_name
+}
+
+output "bastion_public_ip" {
+  description = "IP público do bastion (null sem bastion)."
+  value       = module.compute.bastion_public_ip
+}
+
+output "bastion_security_group_id" {
+  description = "Security group do bastion (a regra de SSH é a única que o infra access altera)."
+  value       = module.security.security_group_ids["bastion"]
+}
+
+output "admin_ssh_cidrs" {
+  description = "CIDRs autorizados a fazer SSH no bastion neste apply."
+  value       = var.admin_ssh_cidrs
+}
+
+output "node_ips" {
+  description = "Hostname => IP privado dos nós do Swarm."
+  value       = { for k, n in module.compute.nodes : n.hostname => n.private_ip }
+}
+
+output "ssh_public_key" {
+  description = "Chave pública do ambiente."
+  value       = module.compute.ssh_public_key
+}
+
+output "ssh_private_key" {
+  description = "Chave privada do ambiente, usada só pelo infra access (08, seção 5.6)."
+  value       = module.compute.ssh_private_key
+  sensitive   = true
+}

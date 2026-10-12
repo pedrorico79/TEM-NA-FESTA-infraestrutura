@@ -12,7 +12,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
 # Raízes do Terraform (08, seção 2). Uma raiz sem arquivos .tf é pulada.
-TF_ROOTS := bootstrap envs/dev envs/prod tests/live/e3-network
+TF_ROOTS := bootstrap envs/dev envs/prod
 # Testes do contrato (03, seção 6): cada run chama modules/environment com
 # o provedor AWS simulado de tests/contract/mocks.
 CONTRACT_TESTS := tests/contract

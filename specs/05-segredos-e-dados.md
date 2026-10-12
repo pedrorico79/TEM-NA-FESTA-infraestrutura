@@ -36,7 +36,7 @@ Depende de: 01 (RF-06, RF-07, RNF-03), 02 (arquitetura), 03 (variáveis), 04 (su
 O teste no laboratório mostrou que o SSM Parameter Store e o Secrets Manager funcionam. Decisão:
 1. O Terraform gera os valores (`random_password`, com as regras de A1) e grava **cada segredo como parâmetro `SecureString`** do SSM Parameter Store, em `/tnf/<env>/secrets/<nome>`. Os manuais (`messaging_secrets`) entram pelo mesmo caminho, vindos do `secrets.env` (A5).
 2. O líder do Swarm lê o caminho `/tnf/<env>/secrets/` com a permissão do `LabInstanceProfile` e cria os **segredos Docker** (04, seção 7, passo 5), exceto o `db_admin_password`.
-3. Por serem criados pelo Terraform, os parâmetros são **removidos no destroy**, sem sobras.
+3. Por serem criados pelo Terraform, os parâmetros são **removidos no destroy**, sem sobras. O bucket de artefatos, onde ficam `join.json` e `status/`, é apagado pelo `infra down` (08, H23).
 - Por que SSM e não um arquivo no S3: o valor fica criptografado por chave KMS e é lido segredo a segredo, em vez de ficar em um objeto único legível por quem tiver acesso ao bucket.
 - **O que continua no S3** (decisão D3 de 04): os tokens de entrada no Swarm (`join.json`) e os arquivos de status, porque são criados em tempo de execução pelos nós e, se ficassem no SSM, poderiam sobrar após um destroy direto e enganar a subida seguinte. O bucket de artefatos é apagado junto com o ambiente.
 - Os valores gerados também ficam no **state do Terraform** (limitação do Terraform), inclusive a chave SSH privada. O bucket do state é criptografado, com bloqueio de acesso público e versionamento (B3); quem lê o state precisa de credenciais da conta.

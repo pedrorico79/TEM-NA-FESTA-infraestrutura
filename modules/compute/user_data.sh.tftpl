@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# user_data mínimo e estável (04, seção 5): variáveis do nó, hostname, AWS CLI
+# e o node-bootstrap.sh baixado do bucket de artefatos. Nenhum segredo aqui.
+set -euo pipefail
+exec > >(tee -a /var/log/tnf-bootstrap.log) 2>&1
+
+cat >/etc/tnf-node.env <<'EOF'
+TNF_ENV=${env}
+TNF_ROLE=${role}
+TNF_HOSTNAME=${hostname}
+TNF_REGION=${region}
+TNF_ARTIFACTS_BUCKET=${artifacts_bucket}
+TNF_LEADER_IP=${leader_ip}
+TNF_MANAGER=${manager}
+EOF
+chmod 644 /etc/tnf-node.env
+
+hostnamectl set-hostname "${hostname}"
+
+# AWS CLI v2, com novas tentativas enquanto a rota da NAT não responde.
+for i in 1 2 3 4 5; do
+  if command -v aws >/dev/null 2>&1; then break; fi
+  if snap install aws-cli --classic; then break; fi
+  sleep $((i * 10))
+done
+
+for i in 1 2 3 4 5; do
+  if aws s3 cp "s3://${artifacts_bucket}/node/node-bootstrap.sh" /usr/local/sbin/tnf-node-bootstrap --region "${region}"; then
+    break
+  fi
+  sleep $((i * 10))
+done
+chmod 755 /usr/local/sbin/tnf-node-bootstrap
+/usr/local/sbin/tnf-node-bootstrap

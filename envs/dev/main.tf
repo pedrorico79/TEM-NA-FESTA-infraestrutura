@@ -293,3 +293,39 @@ output "subnet_cidrs" {
   description = "CIDRs das subnets por camada."
   value       = module.environment.subnet_cidrs
 }
+
+output "artifacts_bucket" {
+  description = "Bucket de artefatos do ambiente."
+  value       = module.environment.artifacts_bucket
+}
+
+output "bastion_public_ip" {
+  description = "IP público do bastion."
+  value       = module.environment.bastion_public_ip
+}
+
+output "bastion_security_group_id" {
+  description = "Security group do bastion."
+  value       = module.environment.bastion_security_group_id
+}
+
+output "admin_ssh_cidrs" {
+  description = "CIDRs autorizados a fazer SSH no bastion."
+  value       = module.environment.admin_ssh_cidrs
+}
+
+output "node_ips" {
+  description = "Hostname => IP privado dos nós do Swarm."
+  value       = module.environment.node_ips
+}
+
+output "ssh_public_key" {
+  description = "Chave pública do ambiente."
+  value       = module.environment.ssh_public_key
+}
+
+output "ssh_private_key" {
+  description = "Chave privada do ambiente (sensível), usada só pelo infra access."
+  value       = module.environment.ssh_private_key
+  sensitive   = true
+}

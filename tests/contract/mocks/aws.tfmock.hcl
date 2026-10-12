@@ -13,3 +13,28 @@ mock_data "aws_ec2_instance_type_offerings" {
     instance_types = ["t3.micro", "t3.small", "t3.micro", "t3.small", "t3.micro", "t3.small"]
   }
 }
+
+# Valores válidos para os data sources dos módulos do ambiente.
+mock_data "aws_iam_policy_document" {
+  defaults = {
+    json = "{\"Version\":\"2012-10-17\",\"Statement\":[]}"
+  }
+}
+
+mock_data "aws_caller_identity" {
+  defaults = {
+    account_id = "000000000000"
+  }
+}
+
+mock_data "aws_ami" {
+  defaults = {
+    id = "ami-00000000000000000"
+  }
+}
+
+mock_data "aws_iam_instance_profile" {
+  defaults = {
+    name = "LabInstanceProfile"
+  }
+}

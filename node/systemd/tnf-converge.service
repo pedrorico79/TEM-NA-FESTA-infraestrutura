@@ -1,0 +1,8 @@
+[Unit]
+Description=Convergencia do ambiente Tem Na Festa (so age no lider do Swarm)
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/tnf-converge

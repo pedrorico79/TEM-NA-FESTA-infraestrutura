@@ -145,5 +145,77 @@ locals {
     DB_SCHEMA_PATH     = local.restoring_from_snapshot ? "" : var.db_schema_path
   }
 
-  ssh_private_key_path = coalesce(var.ssh_private_key_path, "./.keys/${var.env}.pem")
+  ssh_private_key_path = coalesce(var.ssh_private_key_path, abspath("${path.module}/../../.keys/${var.env}.pem"))
+}
+
+# --- Recursos do ambiente (E3 e E4a) ------------------------------------------------
+# Nomes por 08, seção 4.2. O bucket de artefatos é criado pelo infra up com o
+# AWS CLI antes do apply (08, H23); aqui só o nome.
+
+data "aws_caller_identity" "current" {}
+
+locals {
+  account_id         = data.aws_caller_identity.current.account_id
+  artifacts_bucket   = "tnf-${var.env}-artifacts-${local.account_id}-${var.region}"
+  bronze_bucket_name = coalesce(var.bronze_bucket_name, "bucket-bronze-${local.account_id}-${var.bronze_bucket_region}")
+  repo_root          = abspath("${path.module}/../..")
+}
+
+module "network" {
+  source = "../network"
+
+  name_prefix = local.prefix
+  vpc_cidr    = var.vpc_cidr
+  az_names    = local.az_list
+  az_count    = var.az_count
+  nat_mode    = var.nat_mode
+}
+
+module "security" {
+  source = "../security"
+
+  name_prefix     = local.prefix
+  vpc_id          = module.network.vpc_id
+  admin_ssh_cidrs = var.admin_ssh_cidrs
+}
+
+module "secrets" {
+  source = "../secrets"
+
+  env               = var.env
+  messaging_secrets = var.messaging_secrets
+}
+
+module "artifacts" {
+  source = "../artifacts"
+
+  bucket_name = local.artifacts_bucket
+  stack_env   = local.stack_env
+  node_dir    = "${local.repo_root}/node"
+  stacks_dir  = "${local.repo_root}/stacks"
+}
+
+module "compute" {
+  source = "../compute"
+
+  env                   = var.env
+  name_prefix           = local.prefix
+  region                = var.region
+  nodes                 = { for k, n in local.nodes : k => { group = n.group, index = n.index, hostname = n.hostname, az_index = n.az_index, private_ip = n.private_ip, manager = n.manager } }
+  subnet_ids            = module.network.subnet_ids
+  security_group_ids    = module.security.security_group_ids
+  web_instance_type     = var.web_instance_type
+  app_instance_type     = var.app_instance_type
+  bastion_instance_type = var.bastion_instance_type
+  bastion_enabled       = var.bastion_enabled
+  root_volume_size_gb   = var.root_volume_size_gb
+  ami_id                = var.ami_id
+  artifacts_bucket      = module.artifacts.bucket_name
+  bronze_bucket         = local.bronze_bucket_name
+  bronze_region         = var.bronze_bucket_region
+  ssh_private_key_path  = local.ssh_private_key_path
+  node_dir              = "${local.repo_root}/node"
+
+  # EC2 depois das rotas da NAT e dos scripts no bucket (04, seção 4).
+  depends_on = [module.network, module.artifacts, module.secrets]
 }

@@ -192,10 +192,15 @@ read_tfvar() {
 }
 
 # --- Raiz do Terraform de cada ambiente ------------------------------------------------
-# Na E3 o infra plan|up|down <env> usa a raiz temporária tests/live/e3-network,
-# com o state em e3/<env>/ (09, E3; 08, H22). Na E4a passa a ser envs/<env>.
-# Cada ambiente tem a sua pasta de dados do Terraform em .infra/tfdata/<env>.
+# A partir da E4a a raiz é envs/<env>, com o state em envs/<env>/ no bucket de
+# state (08, seção 4.1; H22). Cada ambiente usa a pasta de dados .infra/tfdata/<env>.
 
-env_tf_dir() { printf '%s/tests/live/e3-network' "$INFRA_ROOT"; }
-env_state_key() { printf 'e3/%s/terraform.tfstate' "$1"; }
+env_tf_dir() { printf '%s/envs/%s' "$INFRA_ROOT" "$1"; }
+env_state_key() { printf 'envs/%s/terraform.tfstate' "$1"; }
 env_tf_data_dir() { printf '%s/.infra/tfdata/%s' "$INFRA_ROOT" "$1"; }
+
+# env_region <env>: região do ambiente (padrão us-east-1, 03 seção 3.1).
+env_region() { read_tfvar "$INFRA_ROOT/envs/$1/terraform.tfvars" region us-east-1; }
+
+# artifacts_bucket <env> <conta> <região>: nome do bucket de artefatos (08, seção 4.2).
+artifacts_bucket() { printf 'tnf-%s-artifacts-%s-%s' "$1" "$2" "$3"; }

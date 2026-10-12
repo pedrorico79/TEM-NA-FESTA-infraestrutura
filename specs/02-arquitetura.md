@@ -41,7 +41,7 @@ flowchart LR
 - **State remoto em S3** (*Decidido*): permite migrar depois para o GitHub Actions sem trabalho extra e protege contra perda do arquivo local.
 - **Lock por arquivo:** antes de cada `apply`/`destroy`, o Terraform grava um pequeno arquivo de lock ao lado do state no bucket e o remove no fim. Se outra execução tentar começar enquanto o arquivo existe, ela é recusada, o que evita duas execuções corrompendo o mesmo state. Exige Terraform 1.11 ou superior e dispensa a tabela DynamoDB que era necessária antes.
 - O nome do bucket (que inclui o ID da conta) é passado na chamada do `init` pelo script de subida, pois o bloco do backend não aceita variáveis.
-- O bucket de artefatos pertence ao ambiente, não ao `bootstrap`: seu conteúdo é regerado pelo Terraform a cada `apply`, então não precisa persistir (criado com `force_destroy`).
+- O bucket de artefatos pertence ao ambiente, não ao `bootstrap`: seu conteúdo é regerado pelo Terraform a cada `apply`, então não precisa persistir. Como o laboratório nega a leitura de *object lock* que o recurso `aws_s3_bucket` exige, ele é criado pelo `infra up` com o AWS CLI e apagado (com o conteúdo) pelo `infra down`; o Terraform gerencia a configuração e os objetos (08, H23).
 - Os módulos reutilizáveis ficam em `modules/`; a estrutura do repositório está em 08.
 
 ## 3. Região e rede
