@@ -1,0 +1,65 @@
+# Fluent Bit do nó ${hostname} (02, seção 7.1). Gerado pelo Terraform
+# (módulo compute) e instalado pelo node-bootstrap.sh. Três origens, cada uma
+# com a sua tag e a sua saída para o bronze; credenciais pelo IMDSv2.
+
+[SERVICE]
+    flush         5
+    log_level     info
+    parsers_file  /etc/fluent-bit/tnf-parsers.conf
+    storage.path  /var/lib/fluent-bit/storage
+%{ if docker }
+
+[INPUT]
+    Name             tail
+    Tag              docker
+    Path             /var/lib/docker/containers/*/*-json.log
+    Parser           docker
+    Read_from_Head   On
+    Skip_Long_Lines  On
+    Path_Key         log_file
+    DB               /var/lib/fluent-bit/docker.db
+    Mem_Buf_Limit    5MB
+%{ endif }
+
+[INPUT]
+    Name             tail
+    Tag              auth
+    Path             /var/log/auth.log
+    Parser           syslog-rfc3164
+    Read_from_Head   On
+    DB               /var/lib/fluent-bit/auth.db
+    Mem_Buf_Limit    5MB
+
+[INPUT]
+    Name                 systemd
+    Tag                  systemd
+    Read_From_Tail       Off
+    DB                   /var/lib/fluent-bit/systemd.db
+    Mem_Buf_Limit        5MB
+    Systemd_Filter_Type  Or
+%{ for unit in systemd_units ~}
+    Systemd_Filter       _SYSTEMD_UNIT=${unit}
+%{ endfor ~}
+
+[FILTER]
+    Name    record_modifier
+    Match   *
+    Record  env ${env}
+    Record  host ${hostname}
+    Record  role ${role}
+%{ for source in (docker ? ["docker", "auth", "systemd"] : ["auth", "systemd"]) }
+
+[OUTPUT]
+    Name                  s3
+    Match                 ${source}
+    bucket                ${bronze_bucket}
+    region                ${bronze_region}
+    s3_key_format         /logs/env=${env}/source=${source}/year=%Y/month=%m/day=%d/${hostname}_%H%M%S_$UUID.json
+    total_file_size       10M
+    upload_timeout        1m
+    store_dir             /var/lib/fluent-bit/s3
+    store_dir_limit_size  200M
+    json_date_key         date
+    json_date_format      iso8601
+    retry_limit           5
+%{ endfor }

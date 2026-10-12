@@ -1,0 +1,10 @@
+[Unit]
+Description=Roda a convergencia do Tem Na Festa a cada 60 s (04, secao 7)
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5
+
+[Install]
+WantedBy=timers.target
