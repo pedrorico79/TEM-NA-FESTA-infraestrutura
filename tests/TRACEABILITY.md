@@ -37,7 +37,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | S9 | E4b | manual: no laboratório, reiniciar o timer de convergência ou trocar o líder sem repetir o db-init | pendente |
 | S10 | E4b | manual: no laboratório, primeira subida sem snapshot com o db-init | pendente |
 | S11 | E7 | manual: no laboratório, primeira subida com a etiqueta do backend numa imagem que não fica saudável | pendente |
-| S12 | E3 | manual: no laboratório, interromper o infra up com kill -9 e recuperar o lock | pendente |
+| S12 | E3 | manual: no laboratório, interromper o terraform com kill -9 e recuperar o lock pelo infra (12/10/2026, E3) | verificado |
 | S13 | E6 | manual: no laboratório, aumentar e reduzir nós web com o ambiente no ar | pendente |
 | S14 | E6 | manual: no laboratório, manager_count recusado e worker esperado parado vira degraded | pendente |
 | Q1 | E4a | manual: no laboratório, conferência descrita em 05, Q1 | pendente |
@@ -106,8 +106,8 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G4 | E1 | bats: tests/shell/envs.bats (G4) | verificado |
 | G5 | E2 | bats: tests/shell/bootstrap.bats (G5) e manual: no laboratório, infra bootstrap duas vezes, a segunda sem mudanças (12/10/2026) | verificado |
 | G6 | E2 | manual: no laboratório, terraform destroy do bootstrap recusado pelo prevent_destroy, sem apagar nada (12/10/2026) | verificado |
-| G7 | E2 | bats: tests/shell/preflight.bats e tests/shell/bootstrap.bats (G7) | verificado |
-| G8 | E3 | bats: tests/shell/infra.bats (G8) | pendente |
+| G7 | E2 | bats: tests/shell/preflight.bats, tests/shell/bootstrap.bats e tests/shell/infra-env.bats (G7) | verificado |
+| G8 | E3 | bats: tests/shell/infra-env.bats (G8) | verificado |
 | G9 | E4a | manual: no laboratório, web_node_count de 2 para 3 no plan | pendente |
 | G10 | E9 | bats: tests/shell/check-traceability.bats (G10a a G10h) e make trace (STRICT=1 na E9) | pendente |
 | G11 | E4a | manual: no laboratório, infra ssh dev app-1 | pendente |
@@ -119,7 +119,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G17 | E2 | bats: tests/shell/doctor-leftovers.bats (G17) e manual: no laboratório, infra doctor lista as sobras (12/10/2026: nenhuma sobra na conta) | verificado |
 | G18 | E0 | manual: conferir a árvore de 08 seção 2, nenhum workflow de ECR e a tag legacy-pre-specs | verificado |
 | G19 | E2 | bats: tests/shell/preflight.bats (G19) | verificado |
-| G20 | E3 | manual: no laboratório, interromper um apply com kill -9 e recuperar o lock | pendente |
+| G20 | E3 | manual: no laboratório, interromper o infra down com kill -9 e recuperar o lock (12/10/2026, E3) | verificado |
 | G21 | E2 | bats: tests/shell/preflight.bats (G21) | verificado |
 | G22 | E4a | bats: tests/shell/preflight.bats (G22) e manual: no laboratório, mudar manager_count com o ambiente no ar | pendente |
 | G23 | E4b | bats: tests/shell/snapshots.bats (G23) | pendente |

@@ -21,7 +21,7 @@ fake_setup() {
   FIX="$BATS_TEST_TMPDIR/fix"
   BIN="$BATS_TEST_TMPDIR/bin"
   CALLS="$BATS_TEST_TMPDIR/calls"
-  mkdir -p "$REPO/scripts/lib" "$REPO/bootstrap" "$REPO/envs/dev" "$REPO/envs/prod" \
+  mkdir -p "$REPO/scripts/lib" "$REPO/bootstrap" "$REPO/envs/dev" "$REPO/envs/prod" "$REPO/tests/live/e3-network" \
     "$FIX/buckets" "$FIX/s3" "$FIX/aws" "$BIN"
   : >"$CALLS"
   cp "$REPO_SRC/infra" "$REPO/"

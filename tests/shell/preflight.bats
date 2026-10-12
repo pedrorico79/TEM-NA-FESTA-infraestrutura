@@ -110,7 +110,7 @@ preflight() {
 
 # --- G19 ------------------------------------------------------------------------
 
-errored() { echo "{\"version\":4,\"serial\":$1,\"lineage\":\"x\"}" >"$REPO/envs/dev/errored.tfstate"; }
+errored() { echo "{\"version\":4,\"serial\":$1,\"lineage\":\"x\"}" >"$REPO/tests/live/e3-network/errored.tfstate"; }
 remote() { echo "{\"version\":4,\"serial\":$1,\"lineage\":\"x\"}" >"$FIX/tf-remote.tfstate"; }
 
 @test "G19: com errored.tfstate e credenciais vencidas, recusa com código 2 antes do terraform" {
@@ -119,7 +119,7 @@ remote() { echo "{\"version\":4,\"serial\":$1,\"lineage\":\"x\"}" >"$FIX/tf-remo
   preflight up dev
   [ "$status" -eq 2 ]
   [ -z "$(terraform_calls)" ]
-  [ -f "$REPO/envs/dev/errored.tfstate" ]
+  [ -f "$REPO/tests/live/e3-network/errored.tfstate" ]
 }
 
 @test "G19: com credenciais válidas oferece o state push; N não envia e preserva o arquivo" {
@@ -130,7 +130,7 @@ remote() { echo "{\"version\":4,\"serial\":$1,\"lineage\":\"x\"}" >"$FIX/tf-remo
   [[ "$output" == *"serial) do arquivo local: 5; do state remoto: 4"* ]]
   [[ "$output" == *"nada foi enviado"* ]]
   ! terraform_calls | grep -q "state push"
-  [ -f "$REPO/envs/dev/errored.tfstate" ]
+  [ -f "$REPO/tests/live/e3-network/errored.tfstate" ]
 }
 
 @test "G19: com s, envia sem -force, arquiva em .infra/recovered e roda o plan" {
@@ -140,7 +140,7 @@ remote() { echo "{\"version\":4,\"serial\":$1,\"lineage\":\"x\"}" >"$FIX/tf-remo
   [ "$status" -eq 0 ]
   terraform_calls | grep -q "state push errored.tfstate"
   ! terraform_calls | grep -q -- "-force"
-  [ ! -f "$REPO/envs/dev/errored.tfstate" ]
+  [ ! -f "$REPO/tests/live/e3-network/errored.tfstate" ]
   ls "$REPO"/.infra/recovered/dev-*.tfstate
   terraform_calls | grep -q " plan "
 }
@@ -152,15 +152,15 @@ remote() { echo "{\"version\":4,\"serial\":$1,\"lineage\":\"x\"}" >"$FIX/tf-remo
   [ "$status" -eq 2 ]
   [[ "$output" == *"o state remoto é mais novo"* ]]
   ! terraform_calls | grep -q "state push"
-  [ -f "$REPO/envs/dev/errored.tfstate" ]
+  [ -f "$REPO/tests/live/e3-network/errored.tfstate" ]
 }
 
 # --- lock órfão (08, seção 5.3) ----------------------------------------------------
 
 lock() {
-  mkdir -p "$FIX/s3/$STATE_BUCKET/envs/dev"
+  mkdir -p "$FIX/s3/$STATE_BUCKET/e3/dev"
   printf '{"ID":"lock-123","Operation":"OperationTypeApply","Who":"%s","Created":"%s"}\n' \
-    "$1" "$(date -u -d "-$2 minutes" +%Y-%m-%dT%H:%M:%SZ)" >"$FIX/s3/$STATE_BUCKET/envs/dev/terraform.tfstate.tflock"
+    "$1" "$(date -u -d "-$2 minutes" +%Y-%m-%dT%H:%M:%SZ)" >"$FIX/s3/$STATE_BUCKET/e3/dev/terraform.tfstate.tflock"
 }
 
 @test "lock órfão: mostra quem, quando, operação e ID; sem digitar o ambiente nada é destravado" {

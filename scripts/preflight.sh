@@ -42,7 +42,8 @@ check_credentials() {
 # tf_init: init da raiz com o backend no bucket de state.
 tf_init() {
   terraform -chdir="$TF_DIR" init -input=false -reconfigure \
-    -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$STATE_REGION" >/dev/null
+    -backend-config="bucket=$STATE_BUCKET" -backend-config="region=$STATE_REGION" \
+    -backend-config="key=$STATE_KEY" >/dev/null
 }
 
 check_errored() {
@@ -168,7 +169,9 @@ main() {
     # Antes da primeira criação o bucket de state não existe: não há lock nem state remoto.
     aws s3api head-bucket --bucket "$STATE_BUCKET" >/dev/null 2>&1 || return 0
   else
-    TF_DIR="$INFRA_ROOT/envs/$ENV_NAME" STATE_KEY="envs/$ENV_NAME/terraform.tfstate" STATE_NAME="$ENV_NAME"
+    TF_DIR="$(env_tf_dir "$ENV_NAME")" STATE_KEY="$(env_state_key "$ENV_NAME")" STATE_NAME="$ENV_NAME"
+    TF_DATA_DIR="$(env_tf_data_dir "$ENV_NAME")"
+    export TF_DATA_DIR
     if ! aws s3api head-bucket --bucket "$STATE_BUCKET" >/dev/null 2>&1; then
       die "$EXIT_PRECONDITION" "o bucket de state $STATE_BUCKET não existe ou não está acessível. Rode 'infra bootstrap' uma vez nesta conta."
     fi
