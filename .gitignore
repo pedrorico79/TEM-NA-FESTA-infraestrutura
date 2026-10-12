@@ -13,9 +13,6 @@ secrets.env
 *.tfstate.*
 crash.log
 
-# Backend temporário que o infra bootstrap grava na primeira criação
-*_override.tf
-
 # Cache local do infra (status, session.json, recovered/)
 .infra/
 

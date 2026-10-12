@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
-# Testes do `infra bootstrap` com aws e terraform simulados (G5 e G16 na parte
-# offline; a conferência real é feita no laboratório).
+# Testes do `infra bootstrap` com aws e terraform simulados (G5, G7 e G16 na
+# parte offline; a conferência real é feita no laboratório). Os buckets são
+# criados pelo AWS CLI e o Terraform gerencia só a configuração (08, H20).
 
 load fake_aws
 
@@ -13,37 +14,41 @@ bootstrap() {
   run "$REPO/infra" bootstrap
 }
 
-@test "conta nova: cria os buckets com state local e migra para o bucket de state" {
+@test "conta nova: cria os dois buckets com o AWS CLI, com as etiquetas, e aplica a configuração sem perguntar" {
   export TF_PLAN_RC=2
   bootstrap </dev/null
   [ "$status" -eq 0 ]
-  [[ "$output" == *"state:  $STATE_BUCKET (será criado)"* ]]
+  grep -q "aws s3api create-bucket --bucket $STATE_BUCKET --region us-east-1" "$CALLS"
+  grep -q "aws s3api create-bucket --bucket $BRONZE_BUCKET --region us-east-1" "$CALLS"
+  grep -q "put-bucket-tagging --bucket $STATE_BUCKET.*Key=ManagedBy,Value=terraform" "$CALLS"
+  [[ "$output" != *"Aplicar o plano?"* ]]
+  terraform_calls | grep -q "init -input=false -reconfigure -backend-config=bucket=$STATE_BUCKET -backend-config=region=us-east-1"
   terraform_calls | grep -q " apply "
-  terraform_calls | grep -q "init -input=false -migrate-state -force-copy -backend-config=bucket=$STATE_BUCKET"
-  ! terraform_calls | grep -q " import "
-  [ ! -f "$REPO/bootstrap/backend_override.tf" ]
+  ! terraform_calls | grep -Eq " import | -migrate-state"
   [[ "$output" == *"bootstrap concluído"* ]]
 }
 
-@test "conta nova: buckets novos são criados sem pedir confirmação" {
+@test "bronze em outra região é criado com LocationConstraint" {
+  sed -i 's/^bronze_bucket_region = .*/bronze_bucket_region = "us-west-2"/' "$REPO/bootstrap/terraform.tfvars"
   export TF_PLAN_RC=2
   bootstrap </dev/null
-  [[ "$output" != *"Aplicar o plano?"* ]]
+  [ "$status" -eq 0 ]
+  grep -q "create-bucket --bucket bucket-bronze-000000000000-us-west-2 --region us-west-2 --create-bucket-configuration LocationConstraint=us-west-2" "$CALLS"
 }
 
-@test "G16: bronze existente é importado; a diferença pede confirmação e N não aplica nada" {
+@test "G16: bronze existente é adotado sem ser recriado; a mudança pede confirmação e N não aplica nada" {
   touch "$FIX/buckets/$BRONZE_BUCKET"
   export TF_PLAN_RC=2
   bootstrap <<<"N"
   [ "$status" -eq 2 ]
-  terraform_calls | grep -q "import -input=false aws_s3_bucket.bronze $BRONZE_BUCKET"
-  [[ "$output" == *"os objetos não são tocados"* ]]
+  [[ "$output" == *"bronze: $BRONZE_BUCKET (já existe; os objetos não são tocados)"* ]]
+  ! grep -q "create-bucket --bucket $BRONZE_BUCKET" "$CALLS"
   [[ "$output" == *"Aplicar o plano?"* ]]
   ! terraform_calls | grep -q " apply "
-  ! grep -Eq '^aws s3 (rm|rb)|delete-object|delete-bucket' "$CALLS"
+  ! grep -Eiq 's3 (rm|rb|mv)|delete' "$CALLS"
 }
 
-@test "G16: com s, aplica o plano do bronze importado" {
+@test "G16: com s, aplica a configuração no bronze adotado" {
   touch "$FIX/buckets/$BRONZE_BUCKET"
   export TF_PLAN_RC=2
   bootstrap <<<"s"
@@ -51,25 +56,22 @@ bootstrap() {
   terraform_calls | grep -q " apply "
 }
 
-@test "G5 e G16: na segunda execução, com os dois buckets no state, nada é alterado" {
+@test "G5: na segunda execução nada é criado nem alterado" {
   touch "$FIX/buckets/$STATE_BUCKET" "$FIX/buckets/$BRONZE_BUCKET"
-  printf 'aws_s3_bucket.bronze\naws_s3_bucket.state\n' >"$FIX/tf-state-list"
   export TF_PLAN_RC=0
   bootstrap </dev/null
   [ "$status" -eq 0 ]
   [[ "$output" == *"nada a alterar"* ]]
-  ! terraform_calls | grep -q " import "
+  ! grep -q "create-bucket" "$CALLS"
   ! terraform_calls | grep -q " apply "
-  terraform_calls | grep -q "init -input=false -reconfigure -backend-config=bucket=$STATE_BUCKET"
 }
 
-@test "state perdido: os dois buckets existem mas não estão no state e são importados" {
-  touch "$FIX/buckets/$STATE_BUCKET" "$FIX/buckets/$BRONZE_BUCKET"
-  export TF_PLAN_RC=0
+@test "falha no apply termina com código 1 e diz que os buckets continuam existindo" {
+  export TF_PLAN_RC=2 TF_APPLY_RC=1
   bootstrap </dev/null
-  [ "$status" -eq 0 ]
-  terraform_calls | grep -q "import -input=false aws_s3_bucket.state $STATE_BUCKET"
-  terraform_calls | grep -q "import -input=false aws_s3_bucket.bronze $BRONZE_BUCKET"
+  [ "$status" -eq 1 ]
+  [[ "$output" == *"Os buckets continuam existindo"* ]]
+  [ ! -f "$REPO/.infra/bootstrap.tfplan" ]
 }
 
 @test "G7: credenciais inválidas param o bootstrap antes de qualquer chamada ao terraform" {
@@ -77,4 +79,5 @@ bootstrap() {
   bootstrap </dev/null
   [ "$status" -eq 2 ]
   [ -z "$(terraform_calls)" ]
+  ! grep -q "create-bucket" "$CALLS"
 }

@@ -5,7 +5,7 @@ output "account_id" {
 
 output "state_bucket_name" {
   description = "Bucket do state do Terraform (tnf-tfstate-<conta>-<região>)."
-  value       = aws_s3_bucket.state.bucket
+  value       = local.state_bucket_name
 }
 
 output "state_bucket_region" {
@@ -15,7 +15,7 @@ output "state_bucket_region" {
 
 output "bronze_bucket_name" {
   description = "Bucket bronze dos logs."
-  value       = aws_s3_bucket.bronze.bucket
+  value       = local.bronze_bucket_name
 }
 
 output "bronze_bucket_region" {

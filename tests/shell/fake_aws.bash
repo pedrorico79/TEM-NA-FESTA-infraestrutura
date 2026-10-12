@@ -9,6 +9,7 @@
 #   $FIX/s3/<bucket>/<chave>  conteúdo devolvido por aws s3 cp s3://bucket/chave -
 #   $FIX/aws/<serviço>-<op>.json  resposta das consultas de sobras
 #   TF_PLAN_RC=0|2            código do terraform plan -detailed-exitcode
+#   TF_APPLY_RC=0|1           código do terraform apply
 #   $FIX/tf-state-list        saída do terraform state list
 #   $FIX/tf-remote.tfstate    saída do terraform state pull
 # Registro das chamadas: $CALLS (uma linha por chamada: "aws ..." ou "terraform ...").
@@ -66,6 +67,7 @@ echo "terraform $*" >>"$CALLS"
 args=" $* "
 case "$args" in
   *" plan "*"-detailed-exitcode"*) exit "${TF_PLAN_RC:-0}" ;;
+  *" apply "*) exit "${TF_APPLY_RC:-0}" ;;
   *" state list "*) cat "$FIX/tf-state-list" 2>/dev/null || true ;;
   *" state pull "*) cat "$FIX/tf-remote.tfstate" 2>/dev/null || true ;;
   *" version "*) echo "Terraform v1.16.5" ;;

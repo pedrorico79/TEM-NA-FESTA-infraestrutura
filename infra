@@ -20,7 +20,7 @@ Uso: infra <comando> [opções]
 Comandos (a etapa de 09 em que cada um chega está entre parênteses):
   doctor                       confere ferramentas, credenciais, região e o ambiente WSL (E0; aviso de sobras na E2)
   session [minutos]            tempo restante da sessão do laboratório (E2)
-  bootstrap                    cria ou importa os buckets de state e bronze (E2)
+  bootstrap                    cria ou adota os buckets de state e bronze e aplica a configuração (E2)
   init-secrets                 cria o secrets.env, só com a mensageria ligada (E8)
   plan <env>                   mostra o plano do Terraform, sem criar nada (E3)
   up <env> [--snapshot <id>]   cria ou atualiza o ambiente (E3)
@@ -256,22 +256,37 @@ usage_bootstrap() {
   cat <<'EOF'
 Uso: infra bootstrap
 
-Cria, ou confirma que existem, o bucket do state e o bucket bronze (02, seção 2;
-05, B3). Roda uma vez por conta e é seguro repetir (G5).
-  - Um bucket que já existe é importado para o state, sem tocar nos objetos;
-    qualquer mudança num bucket existente é mostrada e só é aplicada com a sua
+Cria, ou confirma que existem, o bucket do state e o bucket bronze, e aplica a
+configuração deles (02, seção 2; 05, B3). Roda uma vez por conta e é seguro
+repetir (G5).
+  - Os buckets são criados com o AWS CLI, fora do Terraform (08, H20); o
+    Terraform gerencia só versionamento, criptografia, bloqueio de acesso
+    público e a política de só TLS.
+  - Um bucket que já existe é adotado, sem tocar nos objetos; qualquer
+    mudança num bucket existente é mostrada e só é aplicada com a sua
     confirmação (G16).
-  - Na primeira vez o state nasce local e é migrado para
-    bootstrap/terraform.tfstate no próprio bucket de state (08, seção 5).
+  - O state do bootstrap fica em bootstrap/terraform.tfstate, no bucket de state.
 Saída: 0 concluído; 2 pré-condição não atendida ou cancelado.
 EOF
 }
 
 BOOTSTRAP_DIR="$INFRA_ROOT/bootstrap"
-BOOTSTRAP_OVERRIDE="$BOOTSTRAP_DIR/backend_override.tf"
-BOOTSTRAP_LOCAL_STATE="$INFRA_ROOT/.infra/bootstrap-local.tfstate"
 
 tf_bootstrap() { terraform -chdir="$BOOTSTRAP_DIR" "$@"; }
+
+# create_bucket <nome> <região>: cria o bucket com as etiquetas desta versão.
+create_bucket() {
+  local name="$1" region="$2"
+  if [[ "$region" == us-east-1 ]]; then
+    aws s3api create-bucket --bucket "$name" --region "$region" >/dev/null
+  else
+    aws s3api create-bucket --bucket "$name" --region "$region" \
+      --create-bucket-configuration "LocationConstraint=$region" >/dev/null
+  fi
+  aws s3api put-bucket-tagging --bucket "$name" --region "$region" \
+    --tagging 'TagSet=[{Key=Project,Value=tem-na-festa},{Key=Env,Value=shared},{Key=ManagedBy,Value=terraform}]'
+  say_ok "bucket $name criado em $region."
+}
 
 cmd_bootstrap() {
   case "${1:-}" in
@@ -284,50 +299,32 @@ cmd_bootstrap() {
   # Credenciais, sessão, errored.tfstate e lock (08, seção 5.3).
   "$INFRA_ROOT/scripts/preflight.sh" bootstrap
 
+  local tfvars="$BOOTSTRAP_DIR/terraform.tfvars"
   local account region bronze_region bronze state_bucket
   account="$(aws sts get-caller-identity --query Account --output text)"
-  region="$(read_tfvar "$BOOTSTRAP_DIR/terraform.tfvars" region us-east-1)"
-  bronze_region="$(read_tfvar "$BOOTSTRAP_DIR/terraform.tfvars" bronze_bucket_region us-east-1)"
-  bronze="$(read_tfvar "$BOOTSTRAP_DIR/terraform.tfvars" bronze_bucket_name "bucket-bronze-$account-$bronze_region")"
+  region="$(read_tfvar "$tfvars" region us-east-1)"
+  bronze_region="$(read_tfvar "$tfvars" bronze_bucket_region us-east-1)"
+  bronze="$(read_tfvar "$tfvars" bronze_bucket_name "bucket-bronze-$account-$bronze_region")"
   state_bucket="tnf-tfstate-$account-$region"
 
-  local state_exists=0 bronze_exists=0 local_backend=0
-  aws s3api head-bucket --bucket "$state_bucket" >/dev/null 2>&1 && state_exists=1
-  aws s3api head-bucket --bucket "$bronze" >/dev/null 2>&1 && bronze_exists=1
+  local existed=0
   echo "== buckets"
-  echo "state:  $state_bucket ($([[ $state_exists -eq 1 ]] && echo "já existe" || echo "será criado"))"
-  echo "bronze: $bronze ($([[ $bronze_exists -eq 1 ]] && echo "já existe" || echo "será criado"))"
+  if aws s3api head-bucket --bucket "$state_bucket" >/dev/null 2>&1; then
+    existed=1
+    echo "state:  $state_bucket (já existe)"
+  else
+    create_bucket "$state_bucket" "$region"
+  fi
+  if aws s3api head-bucket --bucket "$bronze" >/dev/null 2>&1; then
+    existed=1
+    echo "bronze: $bronze (já existe; os objetos não são tocados)"
+  else
+    create_bucket "$bronze" "$bronze_region"
+  fi
 
   echo "== terraform init"
-  if [[ "$state_exists" -eq 1 ]]; then
-    rm -f "$BOOTSTRAP_OVERRIDE"
-    tf_bootstrap init -input=false -reconfigure       -backend-config="bucket=$state_bucket" -backend-config="region=$region" >/dev/null
-  else
-    # Sem o bucket de state ainda: state local temporário, migrado no fim.
-    local_backend=1
-    mkdir -p "$(dirname "$BOOTSTRAP_LOCAL_STATE")"
-    cat >"$BOOTSTRAP_OVERRIDE" <<EOF
-# Gerado pelo infra bootstrap durante a primeira criação; removido no fim.
-terraform {
-  backend "local" {
-    path = "$BOOTSTRAP_LOCAL_STATE"
-  }
-}
-EOF
-    tf_bootstrap init -input=false -reconfigure >/dev/null
-  fi
-
-  # Buckets que já existem e não estão no state são importados (05, B3).
-  local in_state
-  in_state="$(tf_bootstrap state list 2>/dev/null || true)"
-  if [[ "$state_exists" -eq 1 ]] && ! grep -qx 'aws_s3_bucket.state' <<<"$in_state"; then
-    echo "== importando o bucket de state existente"
-    tf_bootstrap import -input=false aws_s3_bucket.state "$state_bucket"
-  fi
-  if [[ "$bronze_exists" -eq 1 ]] && ! grep -qx 'aws_s3_bucket.bronze' <<<"$in_state"; then
-    echo "== importando o bucket bronze existente (os objetos não são tocados)"
-    tf_bootstrap import -input=false aws_s3_bucket.bronze "$bronze"
-  fi
+  tf_bootstrap init -input=false -reconfigure \
+    -backend-config="bucket=$state_bucket" -backend-config="region=$region" >/dev/null
 
   echo "== terraform plan"
   local plan_file="$INFRA_ROOT/.infra/bootstrap.tfplan" rc=0
@@ -336,18 +333,21 @@ EOF
   case "$rc" in
     0)
       rm -f "$plan_file"
-      say_ok "os buckets já estão como o bootstrap define; nada a alterar."
+      say_ok "a configuração dos buckets já está como o bootstrap define; nada a alterar."
       ;;
     2)
-      if [[ "$state_exists" -eq 1 || "$bronze_exists" -eq 1 ]]; then
-        say_warn "o plano acima altera bucket(s) que já existiam. Os objetos nunca são apagados nem alterados, mas confira em especial políticas, regras de ciclo de vida e notificações que o Terraform substituiria (05, B3)."
+      if [[ "$existed" -eq 1 ]]; then
+        say_warn "o plano acima altera a configuração de bucket(s) que já existiam. Os objetos nunca são apagados nem alterados, mas confira em especial a política do bucket, que o Terraform substituiria (05, B3)."
         if ! confirm "Aplicar o plano?"; then
           rm -f "$plan_file"
           die "$EXIT_PRECONDITION" "nada foi aplicado. Ajuste o bootstrap/ se a diferença não for esperada e rode 'infra bootstrap' de novo."
         fi
       fi
       echo "== terraform apply"
-      tf_bootstrap apply -input=false "$plan_file"
+      if ! tf_bootstrap apply -input=false "$plan_file"; then
+        rm -f "$plan_file"
+        die "$EXIT_UNEXPECTED" "o terraform apply do bootstrap falhou; veja a mensagem acima. Os buckets continuam existindo; corrija e rode 'infra bootstrap' de novo."
+      fi
       rm -f "$plan_file"
       ;;
     *)
@@ -355,17 +355,6 @@ EOF
       die "$EXIT_UNEXPECTED" "o terraform plan do bootstrap falhou; veja a mensagem acima."
       ;;
   esac
-
-  if [[ "$local_backend" -eq 1 ]]; then
-    echo "== migrando o state do bootstrap para s3://$state_bucket/bootstrap/terraform.tfstate"
-    rm -f "$BOOTSTRAP_OVERRIDE"
-    tf_bootstrap init -input=false -migrate-state -force-copy       -backend-config="bucket=$state_bucket" -backend-config="region=$region" >/dev/null
-    tf_bootstrap state list >/dev/null
-    if [[ -f "$BOOTSTRAP_LOCAL_STATE" ]]; then
-      mv "$BOOTSTRAP_LOCAL_STATE" "$BOOTSTRAP_LOCAL_STATE.migrado"
-    fi
-    say_ok "state migrado; a cópia local ficou em ${BOOTSTRAP_LOCAL_STATE#"$INFRA_ROOT"/}.migrado."
-  fi
 
   echo
   tf_bootstrap output

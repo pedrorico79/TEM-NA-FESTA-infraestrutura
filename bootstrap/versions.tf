@@ -8,10 +8,9 @@ terraform {
     }
   }
 
-  # O state do bootstrap fica no próprio bucket de state (08, seção 5; H4).
-  # O bucket e a região chegam pelo infra bootstrap com -backend-config. Na
-  # primeira execução, antes de o bucket existir, o infra usa um
-  # backend_override.tf temporário com state local e depois migra.
+  # O state do bootstrap fica no próprio bucket de state (08, seção 5; H4),
+  # que o infra bootstrap cria com o AWS CLI antes do Terraform (H20). O
+  # bucket e a região chegam com -backend-config.
   backend "s3" {
     key          = "bootstrap/terraform.tfstate"
     use_lockfile = true
