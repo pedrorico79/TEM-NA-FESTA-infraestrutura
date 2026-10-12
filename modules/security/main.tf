@@ -5,11 +5,13 @@
 # swarm-app. A regra de SSH do bastion é a única que o infra access altera
 # (08, seção 5.6).
 
+# As descrições enviadas à AWS ficam sem acento: a API do EC2 só aceita ASCII
+# nas descrições de security groups e regras.
 locals {
   groups = {
-    alb       = "ALB público (HTTP 80)"
-    swarm_web = "Nós web do Swarm"
-    swarm_app = "Nós app do Swarm"
+    alb       = "ALB publico (HTTP 80)"
+    swarm_web = "Nos web do Swarm"
+    swarm_app = "Nos app do Swarm"
     rds       = "RDS MySQL"
     bastion   = "Bastion (SSH)"
   }
@@ -40,7 +42,7 @@ locals {
     "swarm_web-http-from-alb"    = { dst = "swarm_web", src = "alb", port = 80, protocol = "tcp", why = "HTTP do ALB para o frontend" }
     "swarm_web-ssh-from-bastion" = { dst = "swarm_web", src = "bastion", port = 22, protocol = "tcp", why = "SSH vindo do bastion" }
     "swarm_app-ssh-from-bastion" = { dst = "swarm_app", src = "bastion", port = 22, protocol = "tcp", why = "SSH vindo do bastion" }
-    "rds-mysql-from-swarm_app"   = { dst = "rds", src = "swarm_app", port = 3306, protocol = "tcp", why = "MySQL só dos nós app" }
+    "rds-mysql-from-swarm_app"   = { dst = "rds", src = "swarm_app", port = 3306, protocol = "tcp", why = "MySQL so dos nos app" }
   }
 }
 
@@ -107,7 +109,7 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   for_each = toset(["alb", "swarm_web", "swarm_app", "bastion"])
 
   security_group_id = aws_security_group.this[each.key].id
-  description       = "Saída liberada"
+  description       = "Saida liberada"
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }

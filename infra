@@ -438,7 +438,8 @@ cmd_env() {
     -backend-config="region=$state_region" \
     -backend-config="key=$(env_state_key "$env")" >/dev/null
 
-  local tf_args=(-input=false -var-file="$tfvars")
+  # -compact-warnings: a raiz da E3 não declara todas as variáveis do tfvars.
+  local tf_args=(-input=false -var-file="$tfvars" -compact-warnings)
   case "$op" in
     plan)
       echo "== terraform plan ($env)"
