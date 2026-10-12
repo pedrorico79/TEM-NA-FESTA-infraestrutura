@@ -123,7 +123,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G21 | E2 | bats: tests/shell/preflight.bats (G21) | verificado |
 | G22 | E4a | bats: tests/shell/preflight.bats (G22) e manual: no laboratório, mudar manager_count com o ambiente no ar | pendente |
 | G23 | E4b | bats: tests/shell/snapshots.bats (G23) | pendente |
-| G24 | E4a | bats: tests/shell/access.bats (G24) | pendente |
+| G24 | E4a | bats: tests/shell/access.bats (G24a a G24d) | verificado |
 | G25 | E4a | manual: no laboratório, infra ssh de outra máquina e outra rede | pendente |
 | P1 | E0 | manual: revisão de 09 (cada etapa tem entrega, Pronto quando e IDs existentes) | verificado |
 | P2 | E0 | make trace (scripts/check-traceability.sh) | verificado |
