@@ -32,9 +32,9 @@ image_tags = {
 db_instance_class = "db.t3.small"
 db_multi_az       = false
 
-# Sem valor padrão (03, seção 3.8): em branco até existirem. O plan recusa e
-# diz o que preencher; precisam estar preenchidas antes da E4a.
-dockerhub_namespace = ""
-db_schema_repo_url  = ""
-db_schema_ref       = ""
-db_schema_path      = ""
+# Sem valor padrão (03, seção 3.8), preenchidas na E4a: usuário do Docker Hub
+# e a origem do script do schema (tag do TEM-NA-FESTA-database, 05 B5).
+dockerhub_namespace = "cesaraugustotech"
+db_schema_repo_url  = "https://github.com/pedrorico79/TEM-NA-FESTA-database"
+db_schema_ref       = "v1.0.0"
+db_schema_path      = "script-bd-tem-na-festa.sql"

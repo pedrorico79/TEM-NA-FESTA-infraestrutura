@@ -30,11 +30,11 @@ ENVS="$BATS_TEST_DIRNAME/../../envs"
   grep -Eq '^env *= *"prod"$' "$ENVS/prod/terraform.tfvars"
 }
 
-@test "03, seção 3.8: as quatro variáveis sem padrão estão em branco nos dois ambientes" {
+@test "03, seção 3.8: as quatro variáveis sem padrão estão preenchidas nos dois ambientes (a partir da E4a)" {
   local e v
   for e in dev prod; do
     for v in dockerhub_namespace db_schema_repo_url db_schema_ref db_schema_path; do
-      grep -Eq "^$v *= *\"\"$" "$ENVS/$e/terraform.tfvars"
+      grep -Eq "^$v *= *\"[^\"]+\"$" "$ENVS/$e/terraform.tfvars"
     done
   done
 }
