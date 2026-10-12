@@ -139,9 +139,9 @@ doctor() {
 }
 
 @test "comando ainda não implementado termina com código 2 e diz a etapa" {
-  run "$INFRA" status dev
+  run "$INFRA" snapshot dev
   [ "$status" -eq 2 ]
-  [[ "$output" == *"chega na etapa E4a"* ]]
+  [[ "$output" == *"chega na etapa E4b"* ]]
 }
 
 @test "comando desconhecido termina com código 2" {

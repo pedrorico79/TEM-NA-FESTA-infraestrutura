@@ -158,6 +158,23 @@ check_leftovers() {
   say_warn "esses recursos não têm as etiquetas ManagedBy = terraform e Project = tem-na-festa. O infra não os apaga: remova-os à mão no console da AWS antes da E3, para não consumirem limites nem créditos (08, seção 5.2)."
 }
 
+# Buckets de artefatos de ambientes que não estão no ar: sobram quando alguém
+# roda terraform destroy direto, sem o infra down (08, H23). Só avisa.
+check_artifacts_leftovers() {
+  local name env running
+  while read -r name; do
+    [[ "$name" =~ ^tnf-(dev|prod)-artifacts- ]] || continue
+    env="${BASH_REMATCH[1]}"
+    running="$(aws ec2 describe-instances \
+      --filters "Name=tag:Project,Values=tem-na-festa" "Name=tag:Env,Values=$env" \
+      "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+      --query 'length(Reservations[].Instances[])' --output text 2>/dev/null || echo 0)"
+    if [[ "$running" == 0 ]]; then
+      say_warn "sobra provável: bucket de artefatos $name, de um ambiente $env que não está no ar (por exemplo, depois de um terraform destroy sem o infra down). Ele guarda os tokens do Swarm: apague-o com 'aws s3 rb s3://$name --force'."
+    fi
+  done < <(aws s3api list-buckets --query 'Buckets[].Name' --output text 2>/dev/null | tr '\t' '\n')
+}
+
 cmd_doctor() {
   case "${1:-}" in
     -h | --help) usage_doctor; return 0 ;;
@@ -188,6 +205,7 @@ cmd_doctor() {
   echo "== sobras da infraestrutura antiga"
   if [[ "$creds_ok" -eq 1 ]] && command -v jq >/dev/null 2>&1; then
     check_leftovers
+    check_artifacts_leftovers
   else
     say_info "procura de sobras pulada: precisa de credenciais válidas e do jq."
   fi
@@ -364,23 +382,22 @@ cmd_bootstrap() {
 # --- plan, up e down -------------------------------------------------------------
 
 usage_env_cmd() {
-  cat <<EOF
-Uso: infra $1 <env> [--yes]
+  cat <<USAGE
+Uso: infra $1 <env> [--yes] [--ip <ip>]
 
   plan   mostra o plano do Terraform, sem criar nada
-  up     cria ou atualiza o ambiente
-  down   destrói o ambiente
+  up     cria ou atualiza o ambiente e espera ele ficar pronto
+  down   destrói o ambiente e apaga o bucket de artefatos dele
 
 Ambientes: dev ou prod. Antes de qualquer chamada ao Terraform, roda as
 pré-checagens (credenciais, sessão, errored.tfstate, lock e, no up,
 manager_count; 08, seções 5.3 e 5.4). up e down pedem para digitar o nome do
 ambiente; --yes dispensa a pergunta só em dev (08, seção 5; G8).
-
-Nesta etapa (E3 de 09) a raiz é a temporária tests/live/e3-network: só a rede
-e os security groups, com os valores de envs/<env>/terraform.tfvars e o state
-em e3/<env>/terraform.tfstate. Na E4a passa a ser envs/<env>.
-Saída: 0 concluído; 1 erro do Terraform; 2 pré-condição não atendida ou cancelado.
-EOF
+Com admin_ssh_cidrs vazia no terraform.tfvars, plan e up detectam o seu IP
+público (ou usam --ip) e autorizam só ele no bastion (08, seção 5.6).
+Saída: 0 concluído; 1 erro do Terraform; 2 pré-condição não atendida ou
+cancelado; 3 ambiente no ar, mas não pronto (04, seção 8).
+USAGE
 }
 
 # confirm_env <op> <env> <yes>: pede o nome do ambiente digitado; --yes só vale em dev.
@@ -401,17 +418,72 @@ confirm_env() {
   fi
 }
 
+# tf_env_init <env>: init da raiz do ambiente com o backend; define ACCOUNT, REGION e BUCKET.
+tf_env_init() {
+  local env="$1" state_region
+  ACCOUNT="$(aws sts get-caller-identity --query Account --output text)"
+  REGION="$(env_region "$env")"
+  BUCKET="$(artifacts_bucket "$env" "$ACCOUNT" "$REGION")"
+  state_region="$(read_tfvar "$INFRA_ROOT/bootstrap/terraform.tfvars" region us-east-1)"
+  TF_DIR="$(env_tf_dir "$env")"
+  TF_DATA_DIR="$(env_tf_data_dir "$env")"
+  export TF_DATA_DIR
+  terraform -chdir="$TF_DIR" init -input=false -reconfigure \
+    -backend-config="bucket=tnf-tfstate-$ACCOUNT-$state_region" \
+    -backend-config="region=$state_region" \
+    -backend-config="key=$(env_state_key "$env")" >/dev/null
+}
+
+# ssh_cidr_args <env> <ip>: -var com o IP atual, se admin_ssh_cidrs estiver vazia.
+ssh_cidr_args() {
+  local env="$1" ip="$2" fixed current
+  SSH_VAR=()
+  fixed="$(sed -n -E 's/^[[:space:]]*admin_ssh_cidrs[[:space:]]*=[[:space:]]*\[(.*)\].*/\1/p' "$INFRA_ROOT/envs/$env/terraform.tfvars" | tr -d '" ')"
+  if [[ -n "$fixed" ]]; then
+    say_info "admin_ssh_cidrs está preenchida no terraform.tfvars: o infra não altera o IP autorizado (03, seção 3.6)."
+    return 0
+  fi
+  if [[ -z "$ip" ]]; then
+    ip="$(curl -fsS --max-time 10 https://checkip.amazonaws.com 2>/dev/null | tr -d '[:space:]')" || ip=""
+  fi
+  if ! [[ "$ip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]] || [[ "$ip" == 0.0.0.0 ]]; then
+    die "$EXIT_PRECONDITION" "não foi possível detectar o seu IP público para autorizar o SSH no bastion. Informe-o com --ip <ip> (um único IPv4; 0.0.0.0/0 é proibido, T9)."
+  fi
+  current="$(terraform -chdir="$TF_DIR" output -json admin_ssh_cidrs 2>/dev/null | jq -r 'join(",")' 2>/dev/null || true)"
+  if [[ -n "$current" && "$current" != "$ip/32" ]]; then
+    say_warn "o IP autorizado no bastion mudará de $current para $ip/32."
+  fi
+  SSH_VAR=(-var="admin_ssh_cidrs=[\"$ip/32\"]")
+}
+
+# ensure_artifacts_bucket <env>: cria o bucket de artefatos com o AWS CLI (08, H23).
+ensure_artifacts_bucket() {
+  if aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ "$REGION" == us-east-1 ]]; then
+    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" >/dev/null
+  else
+    aws s3api create-bucket --bucket "$BUCKET" --region "$REGION" \
+      --create-bucket-configuration "LocationConstraint=$REGION" >/dev/null
+  fi
+  aws s3api put-bucket-tagging --bucket "$BUCKET" --region "$REGION" \
+    --tagging "TagSet=[{Key=Project,Value=tem-na-festa},{Key=Env,Value=$1},{Key=ManagedBy,Value=terraform}]"
+  say_ok "bucket de artefatos $BUCKET criado."
+}
+
 cmd_env() {
   local op="$1"
   shift
-  local env="" yes=0 arg
-  for arg in "$@"; do
-    case "$arg" in
+  local env="" yes=0 ip=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
       -h | --help) usage_env_cmd "$op"; return 0 ;;
-      --yes) yes=1 ;;
+      --yes) yes=1; shift ;;
+      --ip) ip="${2:-}"; shift 2 ;;
       --snapshot) die "$EXIT_PRECONDITION" "--snapshot chega na etapa E4b, com o banco." ;;
-      -*) die "$EXIT_PRECONDITION" "opção desconhecida: $arg (use 'infra $op --help')" ;;
-      *) env="$arg" ;;
+      -*) die "$EXIT_PRECONDITION" "opção desconhecida: $1 (use 'infra $op --help')" ;;
+      *) env="$1"; shift ;;
     esac
   done
   command -v terraform >/dev/null 2>&1 || die "$EXIT_PRECONDITION" "terraform não encontrado. Rode 'infra doctor'."
@@ -424,40 +496,102 @@ cmd_env() {
     confirm_env "$op" "$env" "$yes"
   fi
 
-  local account state_region tf_dir tfvars
-  account="$(aws sts get-caller-identity --query Account --output text)"
-  state_region="$(read_tfvar "$INFRA_ROOT/bootstrap/terraform.tfvars" region us-east-1)"
-  tf_dir="$(env_tf_dir "$env")"
-  tfvars="$INFRA_ROOT/envs/$env/terraform.tfvars"
-  TF_DATA_DIR="$(env_tf_data_dir "$env")"
-  export TF_DATA_DIR
-
   echo "== terraform init ($env)"
-  terraform -chdir="$tf_dir" init -input=false -reconfigure \
-    -backend-config="bucket=tnf-tfstate-$account-$state_region" \
-    -backend-config="region=$state_region" \
-    -backend-config="key=$(env_state_key "$env")" >/dev/null
+  tf_env_init "$env"
+  local tf_args=(-input=false -var-file="$INFRA_ROOT/envs/$env/terraform.tfvars")
 
-  # -compact-warnings: a raiz da E3 não declara todas as variáveis do tfvars.
-  local tf_args=(-input=false -var-file="$tfvars" -compact-warnings)
   case "$op" in
     plan)
+      ssh_cidr_args "$env" "$ip"
       echo "== terraform plan ($env)"
-      terraform -chdir="$tf_dir" plan "${tf_args[@]}" || die "$EXIT_UNEXPECTED" "o terraform plan falhou; veja a mensagem acima."
+      terraform -chdir="$TF_DIR" plan "${tf_args[@]}" "${SSH_VAR[@]}" || die "$EXIT_UNEXPECTED" "o terraform plan falhou; veja a mensagem acima."
       ;;
     up)
+      ssh_cidr_args "$env" "$ip"
+      ensure_artifacts_bucket "$env"
       echo "== terraform apply ($env)"
-      terraform -chdir="$tf_dir" apply -auto-approve "${tf_args[@]}" ||
+      terraform -chdir="$TF_DIR" apply -auto-approve "${tf_args[@]}" "${SSH_VAR[@]}" ||
         die "$EXIT_UNEXPECTED" "o terraform apply falhou; veja a mensagem acima. Corrija e rode 'infra up $env' de novo (é idempotente)."
-      say_ok "ambiente $env aplicado (rede e security groups, E3)."
+      wait_env "$env"
       ;;
     down)
       echo "== terraform destroy ($env)"
-      terraform -chdir="$tf_dir" destroy -auto-approve "${tf_args[@]}" ||
+      terraform -chdir="$TF_DIR" destroy -auto-approve "${tf_args[@]}" ||
         die "$EXIT_UNEXPECTED" "o terraform destroy falhou; veja a mensagem acima. Rode 'infra down $env' de novo (é idempotente)."
+      if aws s3api head-bucket --bucket "$BUCKET" >/dev/null 2>&1; then
+        aws s3 rb "s3://$BUCKET" --force --region "$REGION" >/dev/null
+        say_ok "bucket de artefatos $BUCKET apagado (com join.json e status/)."
+      fi
       say_ok "ambiente $env destruído."
       ;;
   esac
+}
+
+# wait_env <env>: espera os nós e a convergência (04, seção 8) e mostra o acesso.
+wait_env() {
+  local env="$1" nodes bastion_ip prefix bastion="-"
+  nodes="$(terraform -chdir="$TF_DIR" output -json node_ips | jq -r 'keys | join(",")')"
+  bastion_ip="$(terraform -chdir="$TF_DIR" output -raw bastion_public_ip 2>/dev/null || true)"
+  prefix="$(terraform -chdir="$TF_DIR" output -raw name_prefix)"
+  [[ -n "$bastion_ip" && "$bastion_ip" != null ]] && bastion="$prefix-bastion"
+  echo "== acompanhando a subida (até 25 minutos)"
+  "$INFRA_ROOT/scripts/wait-ready.sh" "$env" "$BUCKET" "$REGION" "$nodes" "$bastion"
+  echo
+  if [[ "$bastion" != "-" ]]; then
+    echo "Bastion: $bastion_ip"
+    echo "SSH:     infra ssh $env app-1   (ou infra ssh $env para o bastion)"
+  fi
+}
+
+# --- status, access e ssh -------------------------------------------------------------
+
+cmd_status() {
+  local env="${1:-}"
+  case "$env" in
+    -h | --help) echo "Uso: infra status <env>: situação dos nós e da convergência (04, seção 8)."; return 0 ;;
+    dev | prod) ;;
+    *) die "$EXIT_PRECONDITION" "informe o ambiente: dev ou prod (03, T1)." ;;
+  esac
+  local account region bucket stack_env nodes bastion="-" listing
+  account="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)" ||
+    die "$EXIT_PRECONDITION" "credenciais da AWS ausentes, inválidas ou vencidas."
+  region="$(env_region "$env")"
+  bucket="$(artifacts_bucket "$env" "$account" "$region")"
+  if ! stack_env="$(aws s3 cp "s3://$bucket/stack.env" - --region "$region" 2>/dev/null)"; then
+    say_info "o ambiente $env não está no ar (não há bucket de artefatos)."
+    return "$EXIT_OK"
+  fi
+  nodes="$(sed -n 's/^EXPECTED_NODES=//p' <<<"$stack_env")"
+  listing="$(aws s3 ls "s3://$bucket/status/nodes/" --region "$region" 2>/dev/null || true)"
+  if grep -q -- '-bastion\.json$' <<<"$listing"; then
+    bastion="$(awk '{print $4}' <<<"$listing" | grep -- '-bastion\.json$' | sed 's/\.json$//')"
+  fi
+  "$INFRA_ROOT/scripts/wait-ready.sh" "$env" "$bucket" "$region" "$nodes" "$bastion" --once
+}
+
+cmd_access() {
+  "$INFRA_ROOT/scripts/access.sh" "$@"
+}
+
+cmd_ssh() {
+  local env="${1:-}" node="${2:-bastion}"
+  case "$env" in
+    -h | --help) echo "Uso: infra ssh <env> [nó]: SSH pelo bastion até o nó (app-1, web-1...; sem nó, o próprio bastion)."; return 0 ;;
+  esac
+  "$INFRA_ROOT/scripts/access.sh" "$env" --ssh
+  TF_DIR="$(env_tf_dir "$env")"
+  TF_DATA_DIR="$(env_tf_data_dir "$env")"
+  export TF_DATA_DIR
+  local key="$INFRA_ROOT/.keys/$env.pem" bastion_ip prefix target known="$INFRA_ROOT/.infra/known_hosts_$env"
+  bastion_ip="$(terraform -chdir="$TF_DIR" output -raw bastion_public_ip)"
+  prefix="$(terraform -chdir="$TF_DIR" output -raw name_prefix)"
+  local opts=(-i "$key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new -o "UserKnownHostsFile=$known")
+  if [[ "$node" == bastion ]]; then
+    exec ssh "${opts[@]}" "ubuntu@$bastion_ip"
+  fi
+  target="$(terraform -chdir="$TF_DIR" output -json node_ips | jq -r --arg h "$prefix-$node" '.[$h] // empty')"
+  [[ -n "$target" ]] || die "$EXIT_PRECONDITION" "nó '$node' não existe no ambiente $env. Use, por exemplo, app-1 ou web-1."
+  exec ssh "${opts[@]}" -o "ProxyCommand=ssh ${opts[*]} -W %h:%p ubuntu@$bastion_ip" "ubuntu@$target"
 }
 
 # --- comandos das próximas etapas ---------------------------------------------
@@ -475,7 +609,9 @@ main() {
     session) cmd_session "$@" ;;
     bootstrap) cmd_bootstrap "$@" ;;
     plan | up | down) cmd_env "$cmd" "$@" ;;
-    status | access | ssh) not_yet "$cmd" E4a ;;
+    status) cmd_status "$@" ;;
+    access) cmd_access "$@" ;;
+    ssh) cmd_ssh "$@" ;;
     snapshot | snapshots) not_yet "$cmd" E4b ;;
     init-secrets) not_yet "$cmd" E8 ;;
     *) die "$EXIT_PRECONDITION" "comando desconhecido: '$cmd'. Veja 'infra --help'." ;;

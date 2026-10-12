@@ -53,3 +53,18 @@ JSON
   [[ "$output" == *"procura de sobras pulada"* ]]
   ! grep -q 'describe-instances' "$CALLS"
 }
+
+@test "H23: bucket de artefatos de ambiente fora do ar é apontado como sobra" {
+  printf 'tnf-tfstate-000000000000-us-east-1\ttnf-dev-artifacts-000000000000-us-east-1\n' >"$FIX/aws/buckets.txt"
+  run "$REPO/infra" doctor
+  [[ "$output" == *"sobra provável: bucket de artefatos tnf-dev-artifacts-000000000000-us-east-1"* ]]
+  [[ "$output" == *"aws s3 rb s3://tnf-dev-artifacts-000000000000-us-east-1 --force"* ]]
+  ! grep -Eq 's3 rb|delete-bucket' "$CALLS"
+}
+
+@test "H23: bucket de artefatos de ambiente no ar não é sobra" {
+  printf 'tnf-dev-artifacts-000000000000-us-east-1\n' >"$FIX/aws/buckets.txt"
+  export FAKE_RUNNING=3
+  run "$REPO/infra" doctor
+  [[ "$output" != *"bucket de artefatos"* ]]
+}

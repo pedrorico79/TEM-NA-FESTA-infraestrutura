@@ -21,7 +21,7 @@ fake_setup() {
   FIX="$BATS_TEST_TMPDIR/fix"
   BIN="$BATS_TEST_TMPDIR/bin"
   CALLS="$BATS_TEST_TMPDIR/calls"
-  mkdir -p "$REPO/scripts/lib" "$REPO/bootstrap" "$REPO/envs/dev" "$REPO/envs/prod" "$REPO/tests/live/e3-network" \
+  mkdir -p "$REPO/scripts/lib" "$REPO/bootstrap" "$REPO/envs/dev" "$REPO/envs/prod" \
     "$FIX/buckets" "$FIX/s3" "$FIX/aws" "$BIN"
   : >"$CALLS"
   cp "$REPO_SRC/infra" "$REPO/"
@@ -52,12 +52,20 @@ case "$1 $2" in
     src="${3#s3://}"
     [[ -f "$FIX/s3/$src" ]] || exit 1
     cat "$FIX/s3/$src" ;;
-  "ec2 describe-instances") cat "$FIX/aws/ec2-instances.json" 2>/dev/null || echo '{"Reservations":[]}' ;;
+  "ec2 describe-instances")
+    if [[ "$*" == *"length("* ]]; then echo "${FAKE_RUNNING:-0}"; exit 0; fi
+    cat "$FIX/aws/ec2-instances.json" 2>/dev/null || echo '{"Reservations":[]}' ;;
+  "s3api list-buckets") cat "$FIX/aws/buckets.txt" 2>/dev/null || true ;;
   "ec2 describe-nat-gateways") cat "$FIX/aws/ec2-nat.json" 2>/dev/null || echo '{"NatGateways":[]}' ;;
   "ec2 describe-addresses") cat "$FIX/aws/ec2-eip.json" 2>/dev/null || echo '{"Addresses":[]}' ;;
   "elbv2 describe-load-balancers") cat "$FIX/aws/elb-lbs.json" 2>/dev/null || echo '{"LoadBalancers":[]}' ;;
   "elbv2 describe-tags") cat "$FIX/aws/elb-tags.json" 2>/dev/null || echo '{"TagDescriptions":[]}' ;;
   "rds describe-db-instances") cat "$FIX/aws/rds.json" 2>/dev/null || echo '{"DBInstances":[]}' ;;
+  "ec2 describe-security-group-rules") cat "$FIX/aws/sg-rules.json" 2>/dev/null || echo '{"SecurityGroupRules":[]}' ;;
+  "s3 ls")
+    dir="$FIX/s3/${3#s3://}"
+    [[ -d "$dir" ]] || exit 1
+    for f in "$dir"*; do [[ -f "$f" ]] && echo "2026-10-12 00:00:00 10 $(basename "$f")"; done ;;
   *) exit 0 ;;
 esac
 EOF
@@ -65,12 +73,23 @@ EOF
   fake_bin terraform <<'EOF'
 echo "terraform $*" >>"$CALLS"
 args=" $* "
+env=dev
+[[ "$args" == *"/envs/prod "* ]] && env=prod
 case "$args" in
   *" plan "*"-detailed-exitcode"*) exit "${TF_PLAN_RC:-0}" ;;
+  *" plan "*"-out="*) exit "${TF_PLAN_RC:-0}" ;;
   *" apply "*) exit "${TF_APPLY_RC:-0}" ;;
   *" state list "*) cat "$FIX/tf-state-list" 2>/dev/null || true ;;
   *" state pull "*) cat "$FIX/tf-remote.tfstate" 2>/dev/null || true ;;
+  *" show -json "*) cat "$FIX/tf-plan.json" 2>/dev/null || echo '{"resource_changes":[]}' ;;
   *" version "*) echo "Terraform v1.16.5" ;;
+  *" output -json node_ips "*) printf '{"tem-na-festa-%s-app-1":"10.0.3.10","tem-na-festa-%s-web-1":"10.0.1.10"}\n' "$env" "$env" ;;
+  *" output -json admin_ssh_cidrs "*) cat "$FIX/tf-admin-cidrs.json" 2>/dev/null || echo '[]' ;;
+  *" output -raw bastion_public_ip "*) printf '203.0.113.5' ;;
+  *" output -raw bastion_security_group_id "*) printf 'sg-bastion' ;;
+  *" output -raw name_prefix "*) printf 'tem-na-festa-%s' "$env" ;;
+  *" output -raw ssh_public_key "*) [[ -f "$FIX/no-state" ]] && exit 1; cat "$FIX/key.pub" ;;
+  *" output -raw ssh_private_key "*) cat "$FIX/key" ;;
 esac
 exit 0
 EOF
@@ -78,6 +97,27 @@ EOF
   fake_bin hostname <<'EOF'
 echo maquina-teste
 EOF
+
+  # IP público detectado (checkip); FAKE_IP vazio simula falha.
+  fake_bin curl <<'EOF'
+echo "curl $*" >>"$CALLS"
+[[ -n "${FAKE_IP-203.0.113.10}" ]] || exit 6
+printf '%s\n' "${FAKE_IP-203.0.113.10}"
+EOF
+
+  # ssh-keygen -y -f <arq>: devolve a chave pública "derivada" do arquivo.
+  fake_bin ssh-keygen <<'EOF'
+f="${@: -1}"
+sed -n 's/^PUB://p' "$f"
+EOF
+
+  fake_bin ssh <<'EOF'
+echo "ssh $*" >>"$CALLS"
+EOF
+
+  # Par de chaves simulado: a "privada" carrega a pública numa linha PUB:.
+  printf 'ssh-ed25519 AAAAchave-atual\n' >"$FIX/key.pub"
+  printf -- '-----BEGIN OPENSSH PRIVATE KEY-----\nPUB:ssh-ed25519 AAAAchave-atual\n-----END OPENSSH PRIVATE KEY-----' >"$FIX/key"
 
   export PATH="$BIN:$PATH"
 }
@@ -103,6 +143,18 @@ session_json() {
   mkdir -p "$REPO/.infra"
   printf '{"token_hash":"%s","first_seen":%s,"reported_minutes":%s,"reported_at":%s}\n' \
     "$(token_hash)" "$first" "$rep_min" "$rep_at" >"$REPO/.infra/session.json"
+}
+
+# env_ready <env>: status no bucket de artefatos de um ambiente pronto (04, seção 8).
+env_ready() {
+  local b="$FIX/s3/tnf-$1-artifacts-000000000000-us-east-1/status"
+  mkdir -p "$b/nodes"
+  local h
+  for h in app-1 web-1; do
+    echo '{"state":"joined","step":"fim"}' >"$b/nodes/tem-na-festa-$1-$h.json"
+  done
+  echo '{"state":"ready","step":"fim"}' >"$b/nodes/tem-na-festa-$1-bastion.json"
+  echo '{"state":"ready","message":"todos os nós esperados estão Ready e rotulados"}' >"$b/converge.json"
 }
 
 STATE_BUCKET="tnf-tfstate-000000000000-us-east-1"
