@@ -104,8 +104,8 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G2 | E0 | make check sem credenciais da AWS (local e no ci-infra.yml) | verificado |
 | G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | verificado |
 | G4 | E1 | bats: tests/shell/envs.bats (G4) | verificado |
-| G5 | E2 | bats: tests/shell/bootstrap.bats (G5) e manual: no laboratório, infra bootstrap duas vezes | pendente |
-| G6 | E2 | manual: no laboratório, tentar destruir o bootstrap com objetos nos buckets | pendente |
+| G5 | E2 | bats: tests/shell/bootstrap.bats (G5) e manual: no laboratório, infra bootstrap duas vezes, a segunda sem mudanças (12/10/2026) | verificado |
+| G6 | E2 | manual: no laboratório, terraform destroy do bootstrap recusado pelo prevent_destroy, sem apagar nada (12/10/2026) | verificado |
 | G7 | E2 | bats: tests/shell/preflight.bats e tests/shell/bootstrap.bats (G7) | verificado |
 | G8 | E3 | bats: tests/shell/infra.bats (G8) | pendente |
 | G9 | E4a | manual: no laboratório, web_node_count de 2 para 3 no plan | pendente |
