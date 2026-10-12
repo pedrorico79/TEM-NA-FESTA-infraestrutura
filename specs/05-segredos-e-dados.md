@@ -137,15 +137,16 @@ Tira um snapshot do RDS sem destruir nada (ponto de restauração antes de uma m
 ### B3. Buckets persistentes (camada `bootstrap`)
 | Bucket | Nome | Configuração |
 |---|---|---|
-| State | `tnf-tfstate-<id-da-conta>-<região>` | versionamento **ligado**, criptografia, bloqueio de acesso público, só TLS, `prevent_destroy` |
-| Bronze | `bucket-bronze-<id-da-conta>-us-east-1` | criptografia, bloqueio de acesso público, só TLS, `prevent_destroy`; sem expiração de objetos por ora |
+| State | `tnf-tfstate-<id-da-conta>-<região>` | versionamento **ligado**, criptografia, bloqueio de acesso público, só TLS |
+| Bronze | `bucket-bronze-<id-da-conta>-us-east-1` | criptografia, bloqueio de acesso público, só TLS; sem expiração de objetos por ora |
 
-- Nenhum dos dois é apagado por um `destroy` de ambiente. Mesmo um `destroy` do `bootstrap` falha enquanto houver objetos.
+- **Os buckets são criados pelo `infra bootstrap` com o AWS CLI, fora do Terraform** (*Decidido* em 12/10/2026, na E2). O laboratório (SCP do AWS Academy) nega `s3:GetBucketObjectLockConfiguration`, que o recurso `aws_s3_bucket` do provedor AWS sempre lê e não tolera negado; por isso o Terraform do `bootstrap` gerencia **só a configuração** da tabela acima (versionamento, criptografia, bloqueio de acesso público e política de TLS), com `prevent_destroy`, e nunca o bucket em si.
+- Nenhum dos dois é apagado por um `destroy` de ambiente, nem por um `destroy` do `bootstrap`: o Terraform não gerencia os buckets.
 - Silver e gold ficam para a fase do datalake.
-- **O bucket bronze já existe na conta** (`bucket-bronze-827290239455-us-east-1`, criado antes deste Terraform) (*Decidido* em 10/10/2026). O `infra bootstrap` o **importa** para o state do `bootstrap` em vez de tentar criá-lo, e só depois aplica a configuração da tabela acima. Regras:
+- **O bucket bronze pode já existir na conta** (por exemplo `bucket-bronze-827290239455-us-east-1`, criado antes deste Terraform numa conta anterior) (*Decidido* em 10/10/2026; ajustado em 12/10/2026). O `infra bootstrap` o **adota**: não o cria de novo e aplica a configuração da tabela acima. Regras:
   - Os objetos antigos **não são apagados nem movidos**. Os logs novos usam o layout de B4, sob `logs/env=<env>/`, e convivem com o conteúdo antigo.
   - O `plan` do `bootstrap` mostra o que o Terraform alteraria no bucket existente (criptografia, bloqueio de acesso público, política de TLS). Qualquer diferença inesperada, por exemplo política de bucket, regra de ciclo de vida ou notificação que o Terraform removeria, é mostrada e **exige a sua confirmação** antes do `apply`.
-  - Se o bucket não existir (outra conta, outra região), o `infra bootstrap` o cria normalmente. O mesmo vale para o bucket do state.
+  - Se o bucket não existir (outra conta, outra região), o `infra bootstrap` o cria com o AWS CLI, com as etiquetas `Project`, `Env = shared` e `ManagedBy`. O mesmo vale para o bucket do state.
   - Verificado por G16 (08).
 
 ### B4. Layout dos logs no bronze (preparado para o Glue/Athena futuros)
