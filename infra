@@ -361,6 +361,104 @@ cmd_bootstrap() {
   say_ok "bootstrap concluído."
 }
 
+# --- plan, up e down -------------------------------------------------------------
+
+usage_env_cmd() {
+  cat <<EOF
+Uso: infra $1 <env> [--yes]
+
+  plan   mostra o plano do Terraform, sem criar nada
+  up     cria ou atualiza o ambiente
+  down   destrói o ambiente
+
+Ambientes: dev ou prod. Antes de qualquer chamada ao Terraform, roda as
+pré-checagens (credenciais, sessão, errored.tfstate, lock e, no up,
+manager_count; 08, seções 5.3 e 5.4). up e down pedem para digitar o nome do
+ambiente; --yes dispensa a pergunta só em dev (08, seção 5; G8).
+
+Nesta etapa (E3 de 09) a raiz é a temporária tests/live/e3-network: só a rede
+e os security groups, com os valores de envs/<env>/terraform.tfvars e o state
+em e3/<env>/terraform.tfstate. Na E4a passa a ser envs/<env>.
+Saída: 0 concluído; 1 erro do Terraform; 2 pré-condição não atendida ou cancelado.
+EOF
+}
+
+# confirm_env <op> <env> <yes>: pede o nome do ambiente digitado; --yes só vale em dev.
+confirm_env() {
+  local op="$1" env="$2" yes="$3" verb typed=""
+  if [[ "$yes" -eq 1 && "$env" == dev ]]; then
+    return 0
+  fi
+  if [[ "$yes" -eq 1 ]]; then
+    say_warn "--yes não dispensa a confirmação em $env."
+  fi
+  verb="criar ou atualizar"
+  [[ "$op" == down ]] && verb="DESTRUIR"
+  printf 'Para %s o ambiente %s, digite o nome dele (%s); qualquer outra resposta cancela: ' "$verb" "$env" "$env" >&2
+  read -r typed || true
+  if [[ "$typed" != "$env" ]]; then
+    die "$EXIT_PRECONDITION" "nada foi feito: a confirmação não confere."
+  fi
+}
+
+cmd_env() {
+  local op="$1"
+  shift
+  local env="" yes=0 arg
+  for arg in "$@"; do
+    case "$arg" in
+      -h | --help) usage_env_cmd "$op"; return 0 ;;
+      --yes) yes=1 ;;
+      --snapshot) die "$EXIT_PRECONDITION" "--snapshot chega na etapa E4b, com o banco." ;;
+      -*) die "$EXIT_PRECONDITION" "opção desconhecida: $arg (use 'infra $op --help')" ;;
+      *) env="$arg" ;;
+    esac
+  done
+  command -v terraform >/dev/null 2>&1 || die "$EXIT_PRECONDITION" "terraform não encontrado. Rode 'infra doctor'."
+
+  local pre_args=("$op" "$env")
+  [[ "$yes" -eq 1 ]] && pre_args+=(--yes)
+  "$INFRA_ROOT/scripts/preflight.sh" "${pre_args[@]}"
+
+  if [[ "$op" != plan ]]; then
+    confirm_env "$op" "$env" "$yes"
+  fi
+
+  local account state_region tf_dir tfvars
+  account="$(aws sts get-caller-identity --query Account --output text)"
+  state_region="$(read_tfvar "$INFRA_ROOT/bootstrap/terraform.tfvars" region us-east-1)"
+  tf_dir="$(env_tf_dir "$env")"
+  tfvars="$INFRA_ROOT/envs/$env/terraform.tfvars"
+  TF_DATA_DIR="$(env_tf_data_dir "$env")"
+  export TF_DATA_DIR
+
+  echo "== terraform init ($env)"
+  terraform -chdir="$tf_dir" init -input=false -reconfigure \
+    -backend-config="bucket=tnf-tfstate-$account-$state_region" \
+    -backend-config="region=$state_region" \
+    -backend-config="key=$(env_state_key "$env")" >/dev/null
+
+  local tf_args=(-input=false -var-file="$tfvars")
+  case "$op" in
+    plan)
+      echo "== terraform plan ($env)"
+      terraform -chdir="$tf_dir" plan "${tf_args[@]}" || die "$EXIT_UNEXPECTED" "o terraform plan falhou; veja a mensagem acima."
+      ;;
+    up)
+      echo "== terraform apply ($env)"
+      terraform -chdir="$tf_dir" apply -auto-approve "${tf_args[@]}" ||
+        die "$EXIT_UNEXPECTED" "o terraform apply falhou; veja a mensagem acima. Corrija e rode 'infra up $env' de novo (é idempotente)."
+      say_ok "ambiente $env aplicado (rede e security groups, E3)."
+      ;;
+    down)
+      echo "== terraform destroy ($env)"
+      terraform -chdir="$tf_dir" destroy -auto-approve "${tf_args[@]}" ||
+        die "$EXIT_UNEXPECTED" "o terraform destroy falhou; veja a mensagem acima. Rode 'infra down $env' de novo (é idempotente)."
+      say_ok "ambiente $env destruído."
+      ;;
+  esac
+}
+
 # --- comandos das próximas etapas ---------------------------------------------
 
 not_yet() {
@@ -375,7 +473,7 @@ main() {
     doctor) cmd_doctor "$@" ;;
     session) cmd_session "$@" ;;
     bootstrap) cmd_bootstrap "$@" ;;
-    plan | up | down) not_yet "$cmd" E3 ;;
+    plan | up | down) cmd_env "$cmd" "$@" ;;
     status | access | ssh) not_yet "$cmd" E4a ;;
     snapshot | snapshots) not_yet "$cmd" E4b ;;
     init-secrets) not_yet "$cmd" E8 ;;

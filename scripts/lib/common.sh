@@ -190,3 +190,12 @@ read_tfvar() {
   v="${v%"${v##*[![:space:]]}"}"
   printf '%s' "${v:-$3}"
 }
+
+# --- Raiz do Terraform de cada ambiente ------------------------------------------------
+# Na E3 o infra plan|up|down <env> usa a raiz temporária tests/live/e3-network,
+# com o state em e3/<env>/ (09, E3; 08, H22). Na E4a passa a ser envs/<env>.
+# Cada ambiente tem a sua pasta de dados do Terraform em .infra/tfdata/<env>.
+
+env_tf_dir() { printf '%s/tests/live/e3-network' "$INFRA_ROOT"; }
+env_state_key() { printf 'e3/%s/terraform.tfstate' "$1"; }
+env_tf_data_dir() { printf '%s/.infra/tfdata/%s' "$INFRA_ROOT" "$1"; }
