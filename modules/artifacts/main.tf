@@ -13,6 +13,7 @@ locals {
     "node/node-bootstrap.sh"            = "${var.node_dir}/node-bootstrap.sh"
     "node/converge.sh"                  = "${var.node_dir}/converge.sh"
     "node/tnf-db-shell.sh"              = "${var.node_dir}/tnf-db-shell.sh"
+    "node/db-init.sh"                   = "${var.node_dir}/db-init.sh"
     "node/systemd/tnf-converge.service" = "${var.node_dir}/systemd/tnf-converge.service"
     "node/systemd/tnf-converge.timer"   = "${var.node_dir}/systemd/tnf-converge.timer"
     "node/fluent-bit/parsers.conf"      = "${var.node_dir}/fluent-bit/parsers.conf"

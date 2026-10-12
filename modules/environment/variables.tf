@@ -309,7 +309,6 @@ variable "messaging_port" {
 
 # --- 3.5 Banco de dados ----------------------------------------------------------
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo database (E4b)
 variable "db_instance_class" {
   description = "Classe da instância do RDS (tamanho nano a medium, limite do laboratório)."
   type        = string
@@ -322,7 +321,6 @@ variable "db_instance_class" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo database (E4b)
 variable "db_allocated_storage_gb" {
   description = "Armazenamento do RDS, em GB."
   type        = number
@@ -335,7 +333,6 @@ variable "db_allocated_storage_gb" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo database (E4b)
 variable "db_multi_az" {
   description = "RDS Multi-AZ; true só se o laboratório permitir (02, seção 10)."
   type        = bool
@@ -343,7 +340,6 @@ variable "db_multi_az" {
   nullable    = false
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo database (E4b)
 variable "db_engine_version" {
   description = "Versão principal do MySQL."
   type        = string
@@ -368,7 +364,6 @@ variable "db_name" {
   }
 }
 
-# tflint-ignore: terraform_unused_declarations # usada pelo módulo database (E4b)
 variable "db_master_username" {
   description = "Usuário administrador do RDS; a senha é gerada (05, A1)."
   type        = string

@@ -90,3 +90,9 @@ variable "node_dir" {
   description = "Caminho da pasta node/ do repositório (templates do Fluent Bit)."
   type        = string
 }
+
+variable "node_objects" {
+  description = "Objetos de node/ já enviados ao bucket de artefatos; as instâncias esperam por eles."
+  type        = list(string)
+  default     = []
+}
