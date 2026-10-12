@@ -117,6 +117,14 @@ setup() {
   [[ "$output" == *"infra ssh dev web-1"* ]]
 }
 
+@test "S6: nó sem nenhum status (sem saída pela NAT) vira falha com mensagem clara, sem travar" {
+  rm "$FIX/s3/tnf-dev-artifacts-000000000000-us-east-1/status/nodes/tem-na-festa-dev-web-1.json"
+  export TNF_WAIT_SILENT=0
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"o nó tem-na-festa-dev-web-1 não deu nenhum sinal"*"rota da NAT"* ]]
+}
+
 @test "down apaga o bucket de artefatos depois do destroy" {
   touch "$FIX/buckets/tnf-dev-artifacts-000000000000-us-east-1"
   run "$REPO/infra" down dev --yes </dev/null

@@ -22,6 +22,7 @@ ONCE=0
 [[ "$BASTION" == --once ]] && BASTION="-"
 TIMEOUT="${TNF_WAIT_TIMEOUT:-1500}" # 25 min (04, seção 8)
 INTERVAL="${TNF_WAIT_INTERVAL:-15}"
+SILENT_MAX="${TNF_WAIT_SILENT:-900}" # 15 min sem nenhum status do nó = falha (04, S6)
 
 s3_json() { aws s3 cp "s3://$BUCKET/$1" - --region "$REGION" 2>/dev/null || true; }
 
@@ -46,6 +47,10 @@ check() {
     printf '  %-32s %-11s %s\n' "$host" "$state" "${step:+($step) }$msg"
     if [[ "$state" == failed ]]; then
       FAILED_MSG="o nó $host falhou na etapa $step: $msg. Veja /var/log/tnf-bootstrap.log no nó (infra ssh $ENV_NAME ${host##*-"$ENV_NAME"-})."
+    elif [[ -z "$doc" && "$ONCE" -eq 0 ]] && (($(date +%s) - start >= SILENT_MAX)); then
+      # Sem nenhum status: o nó não conseguiu nem instalar o AWS CLI, em geral
+      # porque não tem saída para a internet (rota da NAT; 04, S6).
+      FAILED_MSG="o nó $host não deu nenhum sinal em $((SILENT_MAX / 60)) minutos: provavelmente não tem saída para a internet (confira a rota da NAT da subnet dele) e não conseguiu instalar o AWS CLI. Veja /var/log/tnf-bootstrap.log no nó."
     fi
     [[ "$state" == "$want" ]] || READY_ALL=0
   done
