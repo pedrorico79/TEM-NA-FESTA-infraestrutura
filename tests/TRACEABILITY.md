@@ -106,8 +106,8 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G4 | E1 | bats: tests/shell/envs.bats (G4) | verificado |
 | G5 | E2 | bats: tests/shell/bootstrap.bats (G5) e manual: no laboratório, infra bootstrap duas vezes, a segunda sem mudanças (12/10/2026) | verificado |
 | G6 | E2 | manual: no laboratório, terraform destroy do bootstrap recusado pelo prevent_destroy, sem apagar nada (12/10/2026) | verificado |
-| G7 | E2 | bats: tests/shell/preflight.bats e tests/shell/bootstrap.bats (G7) | verificado |
-| G8 | E3 | bats: tests/shell/infra.bats (G8) | pendente |
+| G7 | E2 | bats: tests/shell/preflight.bats, tests/shell/bootstrap.bats e tests/shell/infra-env.bats (G7) | verificado |
+| G8 | E3 | bats: tests/shell/infra-env.bats (G8) | verificado |
 | G9 | E4a | manual: no laboratório, web_node_count de 2 para 3 no plan | pendente |
 | G10 | E9 | bats: tests/shell/check-traceability.bats (G10a a G10h) e make trace (STRICT=1 na E9) | pendente |
 | G11 | E4a | manual: no laboratório, infra ssh dev app-1 | pendente |
