@@ -115,9 +115,10 @@ EOF
 echo "ssh $*" >>"$CALLS"
 EOF
 
-  # Par de chaves simulado: a "privada" carrega a pública numa linha PUB:.
+  # Par de chaves simulado: a "privada" é só um texto com a pública numa linha
+  # PUB: (sem o cabeçalho de chave real, para a varredura de segredos do CI).
   printf 'ssh-ed25519 AAAAchave-atual\n' >"$FIX/key.pub"
-  printf -- '-----BEGIN OPENSSH PRIVATE KEY-----\nPUB:ssh-ed25519 AAAAchave-atual\n-----END OPENSSH PRIVATE KEY-----' >"$FIX/key"
+  printf 'chave-simulada-de-teste\nPUB:ssh-ed25519 AAAAchave-atual\n' >"$FIX/key"
 
   export PATH="$BIN:$PATH"
 }
