@@ -334,6 +334,8 @@ cmd_bootstrap() {
     0)
       rm -f "$plan_file"
       say_ok "a configuração dos buckets já está como o bootstrap define; nada a alterar."
+      echo
+      tf_bootstrap output
       ;;
     2)
       if [[ "$existed" -eq 1 ]]; then
@@ -356,8 +358,6 @@ cmd_bootstrap() {
       ;;
   esac
 
-  echo
-  tf_bootstrap output
   say_ok "bootstrap concluído."
 }
 
