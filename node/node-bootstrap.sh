@@ -178,6 +178,8 @@ install_converge() {
   STEP="convergencia"
   retry 5 aws s3 cp "$S3/node/converge.sh" /usr/local/sbin/tnf-converge --region "$TNF_REGION" --only-show-errors
   chmod 755 /usr/local/sbin/tnf-converge
+  retry 5 aws s3 cp "$S3/node/db-init.sh" /usr/local/sbin/tnf-db-init --region "$TNF_REGION" --only-show-errors
+  chmod 755 /usr/local/sbin/tnf-db-init
   retry 5 aws s3 cp "$S3/node/systemd/tnf-converge.service" /etc/systemd/system/tnf-converge.service --region "$TNF_REGION" --only-show-errors
   retry 5 aws s3 cp "$S3/node/systemd/tnf-converge.timer" /etc/systemd/system/tnf-converge.timer --region "$TNF_REGION" --only-show-errors
   systemctl daemon-reload
