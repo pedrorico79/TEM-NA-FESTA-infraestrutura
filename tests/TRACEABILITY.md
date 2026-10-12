@@ -48,7 +48,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q6 | E9 | manual: no laboratório, conferência descrita em 05, Q6 | pendente |
 | Q7 | E4b | manual: no laboratório, conferência descrita em 05, Q7 | pendente |
 | Q8 | E8 | bats: tests/shell/secrets-env.bats (Q8) e manual: no laboratório, infra up com e sem secrets.env | pendente |
-| Q9 | E2 | manual: no laboratório, inspecionar os buckets de state e bronze | pendente |
+| Q9 | E2 | manual: no laboratório, inspecionar os buckets de state e bronze no console (12/10/2026: acesso público bloqueado, SSE-S3, só TLS e versionamento no state) | verificado |
 | Q10 | E6 | manual: no laboratório, conferência descrita em 05, Q10 | pendente |
 | Q11 | E4b | manual: no laboratório, conferência descrita em 05, Q11 | pendente |
 | Q12 | E7 | manual: no laboratório, conferência descrita em 05, Q12 | pendente |
