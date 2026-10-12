@@ -16,7 +16,7 @@ No Windows, prepare antes o WSL e as ferramentas com o guia [`docs/primeiros-pas
 
 Para destruir: `./infra down dev`. Todos os comandos estão em `./infra --help` e em [08, seção 5](specs/08-estrutura-do-repositorio.md).
 
-> **Situação atual:** etapa **E4a** do plano ([09](specs/09-plano-de-implementacao.md)): `infra up` cria a rede, os nós e o Swarm (sem banco nem stacks ainda); `infra status`, `infra access` e `infra ssh` funcionam.
+> **Situação atual:** etapa **E4b** do plano ([09](specs/09-plano-de-implementacao.md)): `infra up` cria a rede, os nós, o Swarm e o banco (RDS com o schema da tag fixada e snapshots); `infra snapshot` e `infra snapshots` funcionam. As stacks chegam na E6.
 
 ## Para quem desenvolve
 

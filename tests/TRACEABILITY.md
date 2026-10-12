@@ -52,7 +52,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q10 | E6 | manual: no laboratório, conferência descrita em 05, Q10 | pendente |
 | Q11 | E4b | manual: no laboratório, conferência descrita em 05, Q11 | pendente |
 | Q12 | E7 | manual: no laboratório, conferência descrita em 05, Q12 | pendente |
-| Q13 | E4b | manual: no laboratório, conferência descrita em 05, Q13 | pendente |
+| Q13 | E4b | bats: tests/shell/db-init.bats (Q13) e manual: no laboratório, db_schema_ref inexistente e correção sem recriar o ambiente | pendente |
 | Q14 | E6 | manual: no laboratório, conferência descrita em 05, Q14 | pendente |
 | Q15 | E4b | manual: no laboratório, conferência descrita em 05, Q15 | pendente |
 | Q16 | E6 | manual: no laboratório, conferência descrita em 05, Q16 | verificado |
@@ -63,7 +63,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q21 | E4b | manual: no laboratório, conferência descrita em 05, Q21 | pendente |
 | Q22 | E6 | manual: no laboratório, conferência descrita em 05, Q22 (12/10/2026, E4a: (a) IMDSv2 obrigatório e limite 1 conferidos nas 3 instâncias; (b) dispensado pelo autor; (c) fica para a E6) | pendente |
 | Q23 | E8 | manual: no laboratório, conferência descrita em 05, Q23 | pendente |
-| Q24 | E4b | manual: no laboratório, conferência descrita em 05, Q24 | pendente |
+| Q24 | E4b | bats: tests/shell/db-init.bats (Q24) e manual: no laboratório, tag descartável que falha no meio, marcador started e correção sem recriar o ambiente | pendente |
 | R1 | E6 | manual: no laboratório, conferência descrita em 06, R1 | pendente |
 | R2 | E6 | manual: no laboratório, conferência descrita em 06, R2 | pendente |
 | R3 | E6 | manual: no laboratório, conferência descrita em 06, R3 | pendente |
@@ -122,7 +122,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G20 | E3 | manual: no laboratório, interromper o infra down com kill -9 e recuperar o lock (12/10/2026, E3) | verificado |
 | G21 | E2 | bats: tests/shell/preflight.bats (G21) | verificado |
 | G22 | E4a | bats: tests/shell/preflight.bats (G22) e manual: no laboratório, mudar manager_count com o ambiente no ar: recusado antes do apply (12/10/2026) | verificado |
-| G23 | E4b | bats: tests/shell/snapshots.bats (G23) | pendente |
+| G23 | E4b | bats: tests/shell/snapshots.bats (G23) | verificado |
 | G24 | E4a | bats: tests/shell/access.bats (G24a a G24d) | verificado |
 | G25 | E4a | manual: no laboratório, infra ssh de outra máquina e outra rede (12/10/2026: chave recriada conferida; troca de rede dispensada pelo autor, considerada certa) | verificado |
 | P1 | E0 | manual: revisão de 09 (cada etapa tem entrega, Pronto quando e IDs existentes) | verificado |
