@@ -31,7 +31,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | S3 | E6 | manual: no laboratório, backend de 1 para 2 réplicas com infra up | pendente |
 | S4 | E4a | manual: no laboratório, parar o líder com manager_count = 3: app-3 assumiu e a convergência seguiu (12/10/2026) | verificado |
 | S5 | E9 | manual: no laboratório, infra down e infra up com o banco restaurado do snapshot final | pendente |
-| S6 | E4a | manual: no laboratório, remover a rota da NAT durante a subida | pendente |
+| S6 | E4a | bats: tests/shell/infra-env.bats (S6) e manual: no laboratório, remover a rota da NAT durante a subida (12/10/2026: dispensado pelo autor, considerado certo) | verificado |
 | S7 | E1 | tests/contract/T4.tftest.hcl (mesmo verificador de T4: T4_managers_maior_que_nos_app_recusado) | verificado |
 | S8 | E7 | manual: no laboratório, mover a etiqueta do ambiente para uma imagem nova | pendente |
 | S9 | E4b | manual: no laboratório, reiniciar o timer de convergência ou trocar o líder sem repetir o db-init | pendente |
@@ -61,7 +61,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q19 | E4b | manual: no laboratório, conferência descrita em 05, Q19 | pendente |
 | Q20 | E4b | manual: no laboratório, conferência descrita em 05, Q20 | pendente |
 | Q21 | E4b | manual: no laboratório, conferência descrita em 05, Q21 | pendente |
-| Q22 | E6 | manual: no laboratório, conferência descrita em 05, Q22 | pendente |
+| Q22 | E6 | manual: no laboratório, conferência descrita em 05, Q22 (12/10/2026, E4a: (a) IMDSv2 obrigatório e limite 1 conferidos nas 3 instâncias; (b) dispensado pelo autor; (c) fica para a E6) | pendente |
 | Q23 | E8 | manual: no laboratório, conferência descrita em 05, Q23 | pendente |
 | Q24 | E4b | manual: no laboratório, conferência descrita em 05, Q24 | pendente |
 | R1 | E6 | manual: no laboratório, conferência descrita em 06, R1 | pendente |
@@ -108,7 +108,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G6 | E2 | manual: no laboratório, terraform destroy do bootstrap recusado pelo prevent_destroy, sem apagar nada (12/10/2026) | verificado |
 | G7 | E2 | bats: tests/shell/preflight.bats, tests/shell/bootstrap.bats e tests/shell/infra-env.bats (G7) | verificado |
 | G8 | E3 | bats: tests/shell/infra-env.bats (G8) | verificado |
-| G9 | E4a | manual: no laboratório, web_node_count de 2 para 3 no plan | pendente |
+| G9 | E4a | manual: no laboratório, web_node_count de 2 para 3 no plan (12/10/2026: dispensado pelo autor, considerado certo) | verificado |
 | G10 | E9 | bats: tests/shell/check-traceability.bats (G10a a G10h) e make trace (STRICT=1 na E9) | pendente |
 | G11 | E4a | manual: no laboratório, infra ssh dev app-1 abre shell no nó pelo bastion (12/10/2026) | verificado |
 | G12 | E0 | bats: tests/shell/repo-hygiene.bats (G12) e make check (check-lock) | verificado |
@@ -124,7 +124,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G22 | E4a | bats: tests/shell/preflight.bats (G22) e manual: no laboratório, mudar manager_count com o ambiente no ar: recusado antes do apply (12/10/2026) | verificado |
 | G23 | E4b | bats: tests/shell/snapshots.bats (G23) | pendente |
 | G24 | E4a | bats: tests/shell/access.bats (G24a a G24d) | verificado |
-| G25 | E4a | manual: no laboratório, infra ssh de outra máquina e outra rede | pendente |
+| G25 | E4a | manual: no laboratório, infra ssh de outra máquina e outra rede (12/10/2026: chave recriada conferida; troca de rede dispensada pelo autor, considerada certa) | verificado |
 | P1 | E0 | manual: revisão de 09 (cada etapa tem entrega, Pronto quando e IDs existentes) | verificado |
 | P2 | E0 | make trace (scripts/check-traceability.sh) | verificado |
 | P3 | E9 | manual: registros de cada etapa ao vivo nesta tabela e infra doctor sem avisos | pendente |
