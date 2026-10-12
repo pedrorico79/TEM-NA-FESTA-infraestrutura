@@ -475,18 +475,21 @@ ensure_artifacts_bucket() {
 cmd_env() {
   local op="$1"
   shift
-  local env="" yes=0 ip=""
+  local env="" yes=0 ip="" snapshot=""
   while [[ $# -gt 0 ]]; do
     case "$1" in
       -h | --help) usage_env_cmd "$op"; return 0 ;;
       --yes) yes=1; shift ;;
       --ip) ip="${2:-}"; shift 2 ;;
-      --snapshot) die "$EXIT_PRECONDITION" "--snapshot chega na etapa E4b, com o banco." ;;
+      --snapshot) snapshot="${2:-}"; shift 2 ;;
       -*) die "$EXIT_PRECONDITION" "opção desconhecida: $1 (use 'infra $op --help')" ;;
       *) env="$1"; shift ;;
     esac
   done
   command -v terraform >/dev/null 2>&1 || die "$EXIT_PRECONDITION" "terraform não encontrado. Rode 'infra doctor'."
+  if [[ -n "$snapshot" && "$op" == down ]]; then
+    die "$EXIT_PRECONDITION" "--snapshot só vale em infra up (e no plan, para conferir)."
+  fi
 
   local pre_args=("$op" "$env")
   [[ "$yes" -eq 1 ]] && pre_args+=(--yes)
@@ -500,17 +503,27 @@ cmd_env() {
   tf_env_init "$env"
   local tf_args=(-input=false -var-file="$INFRA_ROOT/envs/$env/terraform.tfvars")
 
+  # Snapshot do banco: só em ambiente novo (04, seção 3, passo 7; 05, B2).
+  local snap_var=()
+  if [[ "$op" != down ]]; then
+    local chosen
+    chosen="$("$INFRA_ROOT/scripts/snapshots.sh" choose "$env" "$snapshot")"
+    if [[ -n "$chosen" ]]; then
+      snap_var=(-var="db_snapshot_identifier=$chosen")
+    fi
+  fi
+
   case "$op" in
     plan)
       ssh_cidr_args "$env" "$ip"
       echo "== terraform plan ($env)"
-      terraform -chdir="$TF_DIR" plan "${tf_args[@]}" "${SSH_VAR[@]}" || die "$EXIT_UNEXPECTED" "o terraform plan falhou; veja a mensagem acima."
+      terraform -chdir="$TF_DIR" plan "${tf_args[@]}" "${SSH_VAR[@]}" "${snap_var[@]}" || die "$EXIT_UNEXPECTED" "o terraform plan falhou; veja a mensagem acima."
       ;;
     up)
       ssh_cidr_args "$env" "$ip"
       ensure_artifacts_bucket "$env"
       echo "== terraform apply ($env)"
-      terraform -chdir="$TF_DIR" apply -auto-approve "${tf_args[@]}" "${SSH_VAR[@]}" ||
+      terraform -chdir="$TF_DIR" apply -auto-approve "${tf_args[@]}" "${SSH_VAR[@]}" "${snap_var[@]}" ||
         die "$EXIT_UNEXPECTED" "o terraform apply falhou; veja a mensagem acima. Corrija e rode 'infra up $env' de novo (é idempotente)."
       wait_env "$env"
       ;;
@@ -522,7 +535,9 @@ cmd_env() {
         aws s3 rb "s3://$BUCKET" --force --region "$REGION" >/dev/null
         say_ok "bucket de artefatos $BUCKET apagado (com join.json e status/)."
       fi
-      say_ok "ambiente $env destruído."
+      # Poda: mantém os 3 finais e os 3 manuais mais recentes (05, B2).
+      "$INFRA_ROOT/scripts/snapshots.sh" prune "$env"
+      say_ok "ambiente $env destruído; o snapshot final do banco ficou guardado."
       ;;
   esac
 }
@@ -569,6 +584,21 @@ cmd_status() {
   "$INFRA_ROOT/scripts/wait-ready.sh" "$env" "$bucket" "$region" "$nodes" "$bastion" --once
 }
 
+# cmd_snapshot <create|list> <env>: snapshot manual e listagem (05, B2; 08, seção 5.5).
+cmd_snapshot() {
+  local action="$1" env="${2:-}"
+  case "$env" in
+    -h | --help) "$INFRA_ROOT/scripts/snapshots.sh" --help; return 0 ;;
+  esac
+  if [[ "$action" == create ]]; then
+    "$INFRA_ROOT/scripts/preflight.sh" plan "$env"
+    tf_env_init "$env"
+  else
+    case "$env" in dev | prod) ;; *) die "$EXIT_PRECONDITION" "informe o ambiente: dev ou prod (03, T1)." ;; esac
+  fi
+  "$INFRA_ROOT/scripts/snapshots.sh" "$action" "$env"
+}
+
 cmd_access() {
   "$INFRA_ROOT/scripts/access.sh" "$@"
 }
@@ -612,7 +642,8 @@ main() {
     status) cmd_status "$@" ;;
     access) cmd_access "$@" ;;
     ssh) cmd_ssh "$@" ;;
-    snapshot | snapshots) not_yet "$cmd" E4b ;;
+    snapshot) cmd_snapshot create "$@" ;;
+    snapshots) cmd_snapshot list "$@" ;;
     init-secrets) not_yet "$cmd" E8 ;;
     *) die "$EXIT_PRECONDITION" "comando desconhecido: '$cmd'. Veja 'infra --help'." ;;
   esac
