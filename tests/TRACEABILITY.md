@@ -34,7 +34,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | S6 | E4a | bats: tests/shell/infra-env.bats (S6) e manual: no laboratório, remover a rota da NAT durante a subida (12/10/2026: dispensado pelo autor, considerado certo) | verificado |
 | S7 | E1 | tests/contract/T4.tftest.hcl (mesmo verificador de T4: T4_managers_maior_que_nos_app_recusado) | verificado |
 | S8 | E7 | manual: no laboratório, mover a etiqueta do ambiente para uma imagem nova | pendente |
-| S9 | E4b | manual: no laboratório, reiniciar o timer de convergência ou trocar o líder sem repetir o db-init | pendente |
+| S9 | E4b | manual: no laboratório, convergência reiniciada sem repetir o db-init (20/10/2026) | verificado |
 | S10 | E4b | manual: no laboratório, primeira subida sem snapshot com o db-init | pendente |
 | S11 | E7 | manual: no laboratório, primeira subida com a etiqueta do backend numa imagem que não fica saudável | pendente |
 | S12 | E3 | manual: no laboratório, interromper o terraform com kill -9 e recuperar o lock pelo infra (12/10/2026, E3) | verificado |
@@ -50,11 +50,11 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q8 | E8 | bats: tests/shell/secrets-env.bats (Q8) e manual: no laboratório, infra up com e sem secrets.env | pendente |
 | Q9 | E2 | manual: no laboratório, inspecionar os buckets de state e bronze no console (12/10/2026: acesso público bloqueado, SSE-S3, só TLS e versionamento no state) | verificado |
 | Q10 | E6 | manual: no laboratório, conferência descrita em 05, Q10 | pendente |
-| Q11 | E4b | manual: no laboratório, conferência descrita em 05, Q11 | pendente |
+| Q11 | E4b | manual: no laboratório, mysql.user e SHOW GRANTS do tnf_app: só os 8 privilégios em tem_na_festa.*, sem DROP nem GRANT OPTION (20/10/2026) | verificado |
 | Q12 | E7 | manual: no laboratório, conferência descrita em 05, Q12 | pendente |
-| Q13 | E4b | bats: tests/shell/db-init.bats (Q13) e manual: no laboratório, db_schema_ref inexistente e correção sem recriar o ambiente | pendente |
+| Q13 | E4b | bats: tests/shell/db-init.bats (Q13) e manual: no laboratório, db_schema_ref inexistente e correção sem recriar o ambiente (20/10/2026) | verificado |
 | Q14 | E6 | manual: no laboratório, conferência descrita em 05, Q14 | pendente |
-| Q15 | E4b | manual: no laboratório, conferência descrita em 05, Q15 | pendente |
+| Q15 | E4b | manual: no laboratório, tnf-db-shell no app-1 sem senha em ps (20/10/2026); falta conferir bastion e web | pendente |
 | Q16 | E6 | manual: no laboratório, conferência descrita em 05, Q16 | verificado |
 | Q17 | E4a | manual: no laboratório, conferência descrita em 05, Q17 | verificado |
 | Q18 | E6 | manual: no laboratório, conferência descrita em 05, Q18 | pendente |
@@ -63,7 +63,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q21 | E4b | manual: no laboratório, conferência descrita em 05, Q21 | pendente |
 | Q22 | E6 | manual: no laboratório, conferência descrita em 05, Q22 (12/10/2026, E4a: (a) IMDSv2 obrigatório e limite 1 conferidos nas 3 instâncias; (b) dispensado pelo autor; (c) fica para a E6) | pendente |
 | Q23 | E8 | manual: no laboratório, conferência descrita em 05, Q23 | pendente |
-| Q24 | E4b | bats: tests/shell/db-init.bats (Q24) e manual: no laboratório, tag descartável que falha no meio, marcador started e correção sem recriar o ambiente | pendente |
+| Q24 | E4b | bats: tests/shell/db-init.bats (Q24) e manual: no laboratório, tag descartável que falha no meio, marcador started e correção sem recriar o ambiente (20/10/2026: (a), (b) e (c) conferidos; (d) pendente) | pendente |
 | R1 | E6 | manual: no laboratório, conferência descrita em 06, R1 | pendente |
 | R2 | E6 | manual: no laboratório, conferência descrita em 06, R2 | pendente |
 | R3 | E6 | manual: no laboratório, conferência descrita em 06, R3 | pendente |
