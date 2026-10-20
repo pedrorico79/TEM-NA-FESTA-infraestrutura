@@ -94,6 +94,7 @@ marker() { jq -r ".$1" "$MARKER_FILE"; }
 @test "done: não faz nada" {
   echo '{"state":"done","schema":"applied"}' >"$MARKER_FILE"
   db_init
+  [ "$status" -eq 0 ]
   [ "$output" = ok ]
   ! grep -q '^mysql' "$CALLS"
 }
@@ -113,6 +114,7 @@ marker() { jq -r ".$1" "$MARKER_FILE"; }
   db_init hash-1
   : >"$CALLS"
   db_init hash-1
+  [ "$status" -eq 0 ]
   [[ "$output" == failed* ]]
   ! grep -q 'curl' "$CALLS"
   ! grep -q '^mysql' "$CALLS"
@@ -165,5 +167,6 @@ marker() { jq -r ".$1" "$MARKER_FILE"; }
 @test "sem DB_ENDPOINT ainda: aguarda" {
   sed -i 's/^DB_ENDPOINT=.*/DB_ENDPOINT=/' "$W/stack.env"
   db_init
+  [ "$status" -eq 0 ]
   [[ "$output" == waiting* ]]
 }

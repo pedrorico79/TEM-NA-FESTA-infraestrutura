@@ -39,7 +39,10 @@ REF="$(envval DB_SCHEMA_REF)"
 SCRIPT_PATH="$(envval DB_SCHEMA_PATH)"
 
 OPTS=""
-cleanup() { [[ -n "$OPTS" ]] && rm -f "$OPTS"; }
+# Sem "&&" solto: no trap de saída, um teste falso viraria o código de saída.
+cleanup() {
+  if [[ -n "$OPTS" ]]; then rm -f "$OPTS"; fi
+}
 trap cleanup EXIT
 
 # --- marcador no bucket de artefatos ----------------------------------------------
