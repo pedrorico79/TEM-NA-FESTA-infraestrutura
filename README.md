@@ -18,6 +18,36 @@ Para destruir: `./infra down dev`. Todos os comandos estão em `./infra --help` 
 
 > **Situação atual:** etapa **E4b** do plano ([09](specs/09-plano-de-implementacao.md)): `infra up` cria a rede, os nós, o Swarm e o banco (RDS com o schema da tag fixada e snapshots); `infra snapshot` e `infra snapshots` funcionam. As stacks chegam na E6.
 
+## Primeiro administrador do sistema (banco novo)
+
+O script do schema é público e não traz nenhum usuário (05, B5). Num banco que nasceu vazio, depois de o `infra up` terminar, crie o primeiro admin uma vez; os snapshots o preservam nos ciclos seguintes.
+
+1. Na sua máquina (WSL), gere o hash BCrypt da senha. O `htpasswd` pede a senha sem mostrá-la e sem deixá-la no histórico:
+
+   ```bash
+   sudo apt install -y apache2-utils     # uma vez
+   htpasswd -nBC 10 admin | cut -d: -f2 | sed 's/^\$2y/$2a/'
+   ```
+
+2. Entre num nó app e abra o banco:
+
+   ```bash
+   ./infra ssh dev app-1
+   tnf-db-shell
+   ```
+
+3. No cliente MySQL, crie o perfil e o usuário, colando o hash do passo 1 (troque nome e e-mail):
+
+   ```sql
+   INSERT INTO perfil (nome, descricao) SELECT 'ADMIN', 'Administrador'
+     WHERE NOT EXISTS (SELECT 1 FROM perfil WHERE nome = 'ADMIN');
+   INSERT INTO usuario (nome, email, senha, is_ativo, is_deletado, data_criacao, perfil_id)
+     SELECT 'Administrador', 'admin@exemplo.com', '<hash do passo 1>', TRUE, FALSE, NOW(), id
+     FROM perfil WHERE nome = 'ADMIN';
+   ```
+
+O backend compara a senha com o hash BCrypt (`ROLE_ADMIN` vem do perfil `ADMIN`). Não guarde a senha nem o hash no repositório.
+
 ## Para quem desenvolve
 
 ```bash
