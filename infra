@@ -537,6 +537,8 @@ cmd_env() {
       fi
       # Poda: mantém os 3 finais e os 3 manuais mais recentes (05, B2).
       "$INFRA_ROOT/scripts/snapshots.sh" prune "$env"
+      # O próximo ambiente reusa os mesmos IPs fixos com chaves de host novas.
+      rm -f "$INFRA_ROOT/.infra/known_hosts_$env"
       say_ok "ambiente $env destruído; o snapshot final do banco ficou guardado."
       ;;
   esac
