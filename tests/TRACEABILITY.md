@@ -81,10 +81,10 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | R15 | E6 | tests/contract/T17.tftest.hcl (mesmo verificador de T17) | verificado |
 | R16 | E6 | manual: no laboratório, conferência descrita em 06, R16 | pendente |
 | R17 | E8 | manual: no laboratório, conferência descrita em 06, R17 | pendente |
-| C1 | E5 | manual: no GitHub Actions, conferência descrita em 07, C1 | pendente |
+| C1 | E5 | manual: no GitHub Actions, conferência descrita em 07, C1 (26/10/2026: deploy dev do backend a partir da branch ci/deploy-dockerhub; tnf-backend:dev e :sha-e1f6dc9 com o mesmo digest, label tnf.branch = ci/deploy-dockerhub e revision do commit, conferidos no registro) | verificado |
 | C2 | E7 | manual: no laboratório, infra status depois do deploy do C1 | pendente |
 | C3 | E5 | manual: no GitHub Actions, conferência descrita em 07, C3 | pendente |
-| C4 | E5 | manual: no GitHub Actions, conferência descrita em 07, C4 | pendente |
+| C4 | E5 | manual: no GitHub Actions, conferência descrita em 07, C4 (26/10/2026: as duas primeiras execuções do backend pararam nos testes, uma na compilação e outra com 7 falhas, e o tnf-backend não recebeu nenhuma etiqueta até a execução verde) | verificado |
 | C5 | E7 | manual: no GitHub Actions, deploy de imagem que não fica saudável; manual: no laboratório, infra status com failed_tag | pendente |
 | C6 | E5 | manual: no GitHub Actions, conferência descrita em 07, C6 | pendente |
 | C7 | E5 | manual: no GitHub Actions, conferência descrita em 07, C7 | pendente |
