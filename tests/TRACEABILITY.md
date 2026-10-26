@@ -95,11 +95,11 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C12 | E5 | manual: no GitHub Actions, conferência descrita em 07, C12 | pendente |
 | C13 | E7 | manual: no laboratório, infra down e infra up com a etiqueta ainda na imagem ruim | pendente |
 | C14 | E7 | manual: no GitHub Actions, deploy corrigido ou reuse_tag; manual: no laboratório, converge.json volta a ready | pendente |
-| C15 | E5 | manual: no GitHub Actions, conferência descrita em 07, C15 | pendente |
-| C16 | E5 | manual: no GitHub Actions, conferência descrita em 07, C16 | pendente |
+| C15 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C15 | pendente |
+| C16 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C16 | pendente |
 | C17 | E5 | manual: docker run com --entrypoint sh nas imagens publicadas | pendente |
-| C18 | E5 | manual: no GitHub Actions, conferência descrita em 07, C18 | pendente |
-| C19 | E5 | manual: no GitHub Actions, conferência descrita em 07, C19 | pendente |
+| C18 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C18 | pendente |
+| C19 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C19 | pendente |
 | G1 | E0 | bats: tests/shell/infra-doctor.bats (G1) e manual: infra doctor num clone novo, com as credenciais do laboratório | verificado |
 | G2 | E0 | make check sem credenciais da AWS (local e no ci-infra.yml) | verificado |
 | G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | verificado |
