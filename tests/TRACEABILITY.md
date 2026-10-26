@@ -86,7 +86,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C3 | E5 | manual: no GitHub Actions, conferência descrita em 07, C3 (26/10/2026: novo deploy dev do backend sem mudança: imagem reaproveitada, nada construído, mesmo digest) | verificado |
 | C4 | E5 | manual: no GitHub Actions, conferência descrita em 07, C4 (26/10/2026: as duas primeiras execuções do backend pararam nos testes, uma na compilação e outra com 7 falhas, e o tnf-backend não recebeu nenhuma etiqueta até a execução verde) | verificado |
 | C5 | E7 | manual: no GitHub Actions, deploy de imagem que não fica saudável; manual: no laboratório, infra status com failed_tag | pendente |
-| C6 | E5 | manual: no GitHub Actions, conferência descrita em 07, C6 | pendente |
+| C6 | E5 | manual: no GitHub Actions, conferência descrita em 07, C6 (26/10/2026: backend em dev foi para sha-a076241 e voltou com reuse_tag=sha-e1f6dc9 sem build; :dev com o digest f2875227a891 da imagem antiga, conferido no registro) | verificado |
 | C7 | E5 | manual: no GitHub Actions, conferência descrita em 07, C7 (26/10/2026: reuse_tag=sha-0000000 falhou sem mover etiqueta) | verificado |
 | C8 | E5 | manual: conferir workflows e secrets dos repositórios (na E0, só o de infra: nenhum workflow de ECR) (26/10/2026: workflows de ECR substituídos pelo deploy.yml nos três repositórios e secrets da AWS apagados (confirmado pelo autor)) | verificado |
 | C9 | E8 | manual: no laboratório, infra up de ambiente novo baixa as imagens sem login | pendente |
@@ -99,7 +99,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C16 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C16 (26/10/2026: o passo recebeu VITE_CNPJ e VITE_API_URL e o build usou os dois; /api/v1 conferido no JavaScript da imagem. O valor do VITE_CNPJ não aparece no bundle porque o único uso, ReciboPedido.jsx, não é importado por nenhuma tela e sai no tree-shaking do Vite: limitação do frontend, não do workflow) | verificado |
 | C17 | E5 | manual: docker run com --entrypoint sh nas imagens publicadas (26/10/2026: tnf-frontend:dev imprime /usr/bin/wget (docker run pelo autor); tnf-backend:dev tem usr/bin/wget na camada do apk add, conferido no registro) | verificado |
 | C18 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C18 (26/10/2026: env=prod a partir de ci/deploy-dockerhub falhou no primeiro passo) | verificado |
-| C19 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C19 | pendente |
+| C19 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C19 (26/10/2026: backend em prod a partir da main e da tag v0.1.0 seguiram (:prod = sha-a076241); dev a partir de ci/deploy-dockerhub seguiu no C1) | verificado |
 | G1 | E0 | bats: tests/shell/infra-doctor.bats (G1) e manual: infra doctor num clone novo, com as credenciais do laboratório | verificado |
 | G2 | E0 | make check sem credenciais da AWS (local e no ci-infra.yml) | verificado |
 | G3 | E0 | bats: tests/shell/repo-hygiene.bats (G3) e gitleaks no ci-infra.yml | verificado |
