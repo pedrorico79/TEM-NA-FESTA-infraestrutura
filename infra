@@ -546,18 +546,42 @@ cmd_env() {
 
 # wait_env <env>: espera os nós e a convergência (04, seção 8) e mostra o acesso.
 wait_env() {
-  local env="$1" nodes bastion_ip prefix bastion="-"
+  local env="$1" nodes bastion_ip prefix bastion="-" alb
   nodes="$(terraform -chdir="$TF_DIR" output -json node_ips | jq -r 'keys | join(",")')"
   bastion_ip="$(terraform -chdir="$TF_DIR" output -raw bastion_public_ip 2>/dev/null || true)"
   prefix="$(terraform -chdir="$TF_DIR" output -raw name_prefix)"
+  alb="$(terraform -chdir="$TF_DIR" output -raw alb_dns_name 2>/dev/null || true)"
+  [[ "$alb" == null ]] && alb=""
   [[ -n "$bastion_ip" && "$bastion_ip" != null ]] && bastion="$prefix-bastion"
   echo "== acompanhando a subida (até 25 minutos)"
   "$INFRA_ROOT/scripts/wait-ready.sh" "$env" "$BUCKET" "$REGION" "$nodes" "$bastion"
+  [[ -n "$alb" ]] && wait_alb "$env" "http://$alb/"
   echo
+  [[ -n "$alb" ]] && echo "Sistema: http://$alb/"
   if [[ "$bastion" != "-" ]]; then
     echo "Bastion: $bastion_ip"
     echo "SSH:     infra ssh $env app-1   (ou infra ssh $env para o bastion)"
   fi
+}
+
+# wait_alb <env> <url>: com a convergência pronta, o ALB precisa devolver 200
+# em / (04, seção 8). O target group leva alguns ciclos de verificação para
+# marcar os nós web como saudáveis.
+wait_alb() {
+  local env="$1" url="$2" code="" deadline
+  deadline=$(($(date +%s) + ${TNF_ALB_TIMEOUT:-300}))
+  echo "== conferindo o ALB ($url)"
+  while :; do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 "$url" 2>/dev/null || true)"
+    if [[ "$code" == 200 ]]; then
+      say_ok "o ALB respondeu 200 em /."
+      return 0
+    fi
+    if (($(date +%s) >= deadline)); then
+      die "$EXIT_TIMEOUT" "a convergência ficou pronta, mas o ALB não respondeu 200 em / (última resposta: ${code:-nenhuma}). Confira os alvos do target group no console (nós web saudáveis na porta 80) e o frontend no líder: infra ssh $env app-1, depois docker service ps tnf-web_frontend."
+    fi
+    sleep "${TNF_WAIT_INTERVAL:-15}"
+  done
 }
 
 # --- status, access e ssh -------------------------------------------------------------

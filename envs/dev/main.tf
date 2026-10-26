@@ -329,3 +329,8 @@ output "ssh_private_key" {
   value       = module.environment.ssh_private_key
   sensitive   = true
 }
+
+output "alb_dns_name" {
+  description = "Nome DNS do ALB (o endereço do sistema)."
+  value       = module.environment.alb_dns_name
+}

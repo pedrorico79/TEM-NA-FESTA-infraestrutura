@@ -1,7 +1,7 @@
 # Módulo de composição do ambiente (08, seção 3). Nesta etapa (E1) ele
 # valida o contrato de 03 e calcula os valores derivados (03, seção 5); os
 # módulos de rede, segurança, nós, banco, segredos, artefatos e ALB entram a
-# partir da E3, ligados aqui.
+# partir da E3 (o ALB na E6), ligados aqui.
 
 # --- AZs ------------------------------------------------------------------------
 # Sem az_names, usa as primeiras AZs disponíveis (em ordem alfabética) que
@@ -237,4 +237,14 @@ module "compute" {
   # EC2 depois das rotas da NAT (04, seção 4); os scripts no bucket chegam por
   # node_objects. O RDS cria em paralelo: só o READY espera por ele.
   depends_on = [module.network, module.secrets]
+}
+
+module "alb" {
+  source = "../alb"
+
+  name_prefix       = local.prefix
+  vpc_id            = module.network.vpc_id
+  subnet_ids        = module.network.subnet_ids["public"]
+  security_group_id = module.security.security_group_ids["alb"]
+  web_instance_ids  = { for k, n in module.compute.nodes : k => n.id if startswith(k, "web-") }
 }

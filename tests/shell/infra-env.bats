@@ -88,6 +88,23 @@ setup() {
   [[ "$output" == *"Bastion: 203.0.113.5"* ]]
 }
 
+@test "up confere o ALB ao fim e imprime o endereço do sistema" {
+  export FAKE_ALB=tem-na-festa-dev-alb-1.us-east-1.elb.amazonaws.com
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 0 ]
+  grep -q "curl .*http://$FAKE_ALB/" "$CALLS"
+  [[ "$output" == *"o ALB respondeu 200 em /"* ]]
+  [[ "$output" == *"Sistema: http://$FAKE_ALB/"* ]]
+}
+
+@test "up termina com código 3 quando o ALB não responde 200" {
+  export FAKE_ALB=tem-na-festa-dev-alb-1.us-east-1.elb.amazonaws.com FAKE_HTTP_CODE=502 TNF_ALB_TIMEOUT=0
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 3 ]
+  [[ "$output" == *"o ALB não respondeu 200 em / (última resposta: 502)"* ]]
+  [[ "$output" == *"docker service ps tnf-web_frontend"* ]]
+}
+
 @test "up avisa quando o IP autorizado no bastion vai mudar" {
   echo '["198.51.100.20/32"]' >"$FIX/tf-admin-cidrs.json"
   run "$REPO/infra" up dev --yes </dev/null
@@ -148,6 +165,16 @@ setup() {
   [[ "$output" == *"tem-na-festa-dev-app-1"*"joined"* ]]
   [[ "$output" == *"tem-na-festa-dev-bastion"*"ready"* ]]
   [[ "$output" == *"convergência"*"ready"* ]]
+}
+
+@test "infra status mostra cada serviço com réplicas e imagem, e a mensageria desligada" {
+  local b="$FIX/s3/tnf-dev-artifacts-000000000000-us-east-1"
+  echo 'EXPECTED_NODES=tem-na-festa-dev-web-1,tem-na-festa-dev-app-1' >"$b/stack.env"
+  echo '{"state":"ready","message":"ok","services":{"backend":{"state":"ok","desired":1,"running":1,"image":"ns/tnf-backend:dev@sha256:abc"},"messaging":{"state":"off","desired":0,"running":0,"image":""}}}' >"$b/status/converge.json"
+  run "$REPO/infra" status dev
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"serviço backend"*"ok"*"1/1 ns/tnf-backend:dev@sha256:abc"* ]]
+  [[ "$output" == *"serviço messaging"*"off"*"desligado"* ]]
 }
 
 @test "falha do apply termina com código 1 e mensagem" {

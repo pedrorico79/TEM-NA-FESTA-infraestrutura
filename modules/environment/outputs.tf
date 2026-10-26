@@ -93,3 +93,8 @@ output "ssh_private_key" {
   value       = module.compute.ssh_private_key
   sensitive   = true
 }
+
+output "alb_dns_name" {
+  description = "Nome DNS do ALB: o sistema responde em http://<nome> (RF-11)."
+  value       = module.alb.dns_name
+}

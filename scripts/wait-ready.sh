@@ -58,6 +58,12 @@ check() {
   CONVERGE_STATE="$(jget "$doc" .state aguardando)"
   CONVERGE_MSG="$(jget "$doc" .message "")"
   printf '  %-32s %-11s %s\n' "convergência" "$CONVERGE_STATE" "$CONVERGE_MSG"
+  # Serviços (04, seção 7, passo 9): situação, réplicas e imagem em execução.
+  if [[ -n "$doc" ]]; then
+    jq -r '(.services // {}) | to_entries[] |
+      "  \("serviço " + .key | .[0:32] | . + " " * (32 - length)) \(.value.state | . + " " * (11 - length)) \(if .value.state == "off" then "desligado" else "\(.value.running)/\(.value.desired) \(.value.image)" end)"' \
+      <<<"$doc" 2>/dev/null || true
+  fi
   [[ "$CONVERGE_STATE" == ready ]] || READY_ALL=0
 }
 

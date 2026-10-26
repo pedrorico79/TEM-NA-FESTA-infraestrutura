@@ -89,6 +89,7 @@ case "$args" in
   *" output -raw bastion_public_ip "*) printf '203.0.113.5' ;;
   *" output -raw bastion_security_group_id "*) printf 'sg-bastion' ;;
   *" output -raw name_prefix "*) printf 'tem-na-festa-%s' "$env" ;;
+  *" output -raw alb_dns_name "*) printf '%s' "${FAKE_ALB-}" ;;
   *" output -raw ssh_public_key "*) [[ -f "$FIX/no-state" ]] && exit 1; cat "$FIX/key.pub" ;;
   *" output -raw ssh_private_key "*) cat "$FIX/key" ;;
 esac
@@ -99,9 +100,14 @@ EOF
 echo maquina-teste
 EOF
 
-  # IP público detectado (checkip); FAKE_IP vazio simula falha.
+  # IP público detectado (checkip); FAKE_IP vazio simula falha. A consulta ao
+  # ALB (-w %{http_code}) devolve FAKE_HTTP_CODE.
   fake_bin curl <<'EOF'
 echo "curl $*" >>"$CALLS"
+if [[ " $* " == *" -w "* ]]; then
+  printf '%s' "${FAKE_HTTP_CODE-200}"
+  exit 0
+fi
 [[ -n "${FAKE_IP-203.0.113.10}" ]] || exit 6
 printf '%s\n' "${FAKE_IP-203.0.113.10}"
 EOF
