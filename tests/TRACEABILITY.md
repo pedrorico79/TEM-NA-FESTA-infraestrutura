@@ -96,8 +96,8 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | C13 | E7 | manual: no laboratório, infra down e infra up com a etiqueta ainda na imagem ruim | pendente |
 | C14 | E7 | manual: no GitHub Actions, deploy corrigido ou reuse_tag; manual: no laboratório, converge.json volta a ready | pendente |
 | C15 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C15 (26/10/2026: VITE_API_URL removida do frontend; falha antes do build com a mensagem de 4.4) | verificado |
-| C16 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C16 | pendente |
-| C17 | E5 | manual: docker run com --entrypoint sh nas imagens publicadas | pendente |
+| C16 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C16 (26/10/2026: o passo recebeu VITE_CNPJ e VITE_API_URL e o build usou os dois; /api/v1 conferido no JavaScript da imagem. O valor do VITE_CNPJ não aparece no bundle porque o único uso, ReciboPedido.jsx, não é importado por nenhuma tela e sai no tree-shaking do Vite: limitação do frontend, não do workflow) | verificado |
+| C17 | E5 | manual: docker run com --entrypoint sh nas imagens publicadas (26/10/2026: tnf-frontend:dev imprime /usr/bin/wget (docker run pelo autor); tnf-backend:dev tem usr/bin/wget na camada do apk add, conferido no registro) | verificado |
 | C18 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C18 (26/10/2026: env=prod a partir de ci/deploy-dockerhub falhou no primeiro passo) | verificado |
 | C19 | E5 | tests/shell/deploy-template.bats e manual: no GitHub Actions, conferência descrita em 07, C19 | pendente |
 | G1 | E0 | bats: tests/shell/infra-doctor.bats (G1) e manual: infra doctor num clone novo, com as credenciais do laboratório | verificado |
