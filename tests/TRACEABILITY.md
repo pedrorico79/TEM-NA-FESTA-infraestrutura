@@ -35,7 +35,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | S7 | E1 | tests/contract/T4.tftest.hcl (mesmo verificador de T4: T4_managers_maior_que_nos_app_recusado) | verificado |
 | S8 | E7 | manual: no laboratório, mover a etiqueta do ambiente para uma imagem nova | pendente |
 | S9 | E4b | manual: no laboratório, convergência reiniciada sem repetir o db-init (20/10/2026) | verificado |
-| S10 | E4b | manual: no laboratório, primeira subida sem snapshot com o db-init | pendente |
+| S10 | E4b | manual: no laboratório, primeira subida sem snapshot: o db-init aplicou o script da tag fixada e criou o tnf_app (20/10/2026); o backend iniciado fica para a E6 | verificado |
 | S11 | E7 | manual: no laboratório, primeira subida com a etiqueta do backend numa imagem que não fica saudável | pendente |
 | S12 | E3 | manual: no laboratório, interromper o terraform com kill -9 e recuperar o lock pelo infra (12/10/2026, E3) | verificado |
 | S13 | E6 | manual: no laboratório, aumentar e reduzir nós web com o ambiente no ar | pendente |
@@ -59,11 +59,11 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q17 | E4a | manual: no laboratório, conferência descrita em 05, Q17 | verificado |
 | Q18 | E6 | manual: no laboratório, conferência descrita em 05, Q18 | pendente |
 | Q19 | E4b | bats: tests/shell/snapshots.bats (G23, recusa de outro ambiente e de inexistente) e manual: no laboratório, manual e final com os nomes do padrão, up sem opções restaurou o final, up --snapshot do manual com db_schema_* em branco restaurou a linha gravada antes dele (25/10/2026) | verificado |
-| Q20 | E4b | manual: no laboratório, conferência descrita em 05, Q20 | pendente |
+| Q20 | E4b | bats: tests/shell/snapshots.bats (G23, a poda do down mantém 3 de cada tipo e não toca nos de outro ambiente); os 4 ciclos reais no laboratório foram dispensados pelo custo (25/10/2026) | verificado |
 | Q21 | E4b | manual: no laboratório, com o ambiente no ar e um manual mais novo, infra up não mexeu no RDS e a linha posterior continuou lá; --snapshot recusado com mensagem; plan direto com db_snapshot_identifier não recria o RDS (25/10/2026) | verificado |
 | Q22 | E6 | manual: no laboratório, conferência descrita em 05, Q22 (12/10/2026, E4a: (a) IMDSv2 obrigatório e limite 1 conferidos nas 3 instâncias; (b) dispensado pelo autor; (c) fica para a E6) | pendente |
 | Q23 | E8 | manual: no laboratório, conferência descrita em 05, Q23 | pendente |
-| Q24 | E4b | bats: tests/shell/db-init.bats (Q24) e manual: no laboratório, tag descartável que falha no meio, marcador started e correção sem recriar o ambiente (20/10/2026: (a), (b) e (c) conferidos; (d) pendente) | pendente |
+| Q24 | E4b | bats: tests/shell/db-init.bats (Q24 e banco vazio com db_schema_* em branco) e manual: no laboratório, tag descartável que falha no meio, marcador started e correção sem recriar o ambiente (20/10/2026: (a), (b) e (c)); (d) conferido só pelo bats, porque ao vivo exigiria apagar todos os snapshots do dev e mais três ciclos do RDS (25/10/2026) | verificado |
 | R1 | E6 | manual: no laboratório, conferência descrita em 06, R1 | pendente |
 | R2 | E6 | manual: no laboratório, conferência descrita em 06, R2 | pendente |
 | R3 | E6 | manual: no laboratório, conferência descrita em 06, R3 | pendente |
