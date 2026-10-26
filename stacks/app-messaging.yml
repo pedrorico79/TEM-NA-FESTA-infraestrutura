@@ -1,0 +1,34 @@
+# Stack tnf-app, parte da mensageria (06, seção 6.4): ESQUELETO, não
+# implantado enquanto REPLICAS_MESSAGING = 0. O líder só acrescenta este
+# arquivo ao deploy da tnf-app com a mensageria ligada (E8). PENDENTE até a
+# configuração do microsserviço: segredos e variáveis de conexão, verificação
+# de saúde, memória e, se houver sessão do WhatsApp em disco, o volume
+# messaging_session no caminho que ele usa (06, seção 6.4.1).
+version: "3.8"
+
+services:
+  messaging:
+    image: ${IMAGE_MESSAGING}
+    networks:
+      tnf-net:
+        aliases:
+          - messaging
+    stop_grace_period: 30s
+    deploy:
+      replicas: ${REPLICAS_MESSAGING}
+      placement:
+        constraints:
+          - node.labels.tier == app
+          - node.labels.messaging == true
+        max_replicas_per_node: 1
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+        delay: 5s
+
+networks:
+  tnf-net:
+    external: true

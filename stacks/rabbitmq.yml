@@ -1,0 +1,69 @@
+# Stack tnf-rabbitmq (06, seções 2 e 6.3): instância única fixada no nó com
+# rótulo rabbitmq=true (o app-1), com hostname fixo para os dados no volume
+# local sobreviverem a um novo container. Sem porta publicada: 5672 só na
+# rede tnf-net. O usuário padrão vem dos segredos Docker e é criado quando o
+# volume nasce; os arquivos são lidos pelo entrypoint para não aparecerem
+# como variáveis do container (R6).
+#
+# O definitions.json (filas e trocas, 06, seção 6.3) entra na E8, com a
+# configuração do microsserviço: carregado no boot, ele faz o RabbitMQ não
+# criar o usuário padrão, então precisa vir junto com essa decisão.
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:4.1.4
+    hostname: rabbitmq
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        export RABBITMQ_DEFAULT_USER="$$(cat /run/secrets/rabbitmq_user)";
+        export RABBITMQ_DEFAULT_PASS="$$(cat /run/secrets/rabbitmq_password)";
+        exec docker-entrypoint.sh rabbitmq-server
+    environment:
+      RABBITMQ_NODENAME: rabbit@rabbitmq
+    secrets:
+      - source: tnf_rabbitmq_user
+        target: rabbitmq_user
+      - source: tnf_rabbitmq_password
+        target: rabbitmq_password
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      tnf-net:
+        aliases:
+          - rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.rabbitmq == true
+      update_config:
+        order: stop-first
+        failure_action: rollback
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 512M
+
+networks:
+  tnf-net:
+    external: true
+
+volumes:
+  rabbitmq_data:
+
+secrets:
+  tnf_rabbitmq_user:
+    external: true
+  tnf_rabbitmq_password:
+    external: true
