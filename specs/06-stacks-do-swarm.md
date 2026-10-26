@@ -1,6 +1,7 @@
 # 06 – Stacks do Swarm (compose files)
 
 Estado: **aprovado** (09/10/2026); ajustado em 10/10/2026 (frontend em `stop-first`, auditoria item 1; mensageria desligada com `REPLICAS_MESSAGING=0`, auditoria item 3; `stack.env` com `EXPECTED_NODES` e `MANAGER_COUNT`, auditoria item 11; mensageria com no máximo 1 réplica e `max_replicas_per_node: 1`, auditoria item 13; verificação de saúde com `wget` e `curl` de reserva, `VITE_*` vindos de variáveis do repositório, auditoria item 14; mensageria fixada no `app-1` por rótulo e regra do pareamento do WhatsApp com sessão, seção 6.4.1, E15 e R17, auditoria item 19) e em 11/10/2026 (`stack.env` com `DB_SCHEMA_REPO_URL`, `DB_SCHEMA_REF` e `DB_SCHEMA_PATH`, para o `db-init` do líder baixar o script do schema, seção 4 e E12, auditoria item 22). O microsserviço de mensageria está **PENDENTE** (aguarda a configuração dele): aqui ele aparece só como esqueleto, fica **desligado até a E8**, e tudo o que depende dele está marcado.
+Ajustado em 26/10/2026, na E6: o backend publica os eventos de pedido no RabbitMQ (E9 revista), verificação de saúde do backend em `/api/v1/health`, RabbitMQ 4.1.4 e `definitions.json` adiado para a E8.
 Depende de: 02 (serviços e posicionamento), 03 (`service_replicas`, `image_tags`), 04 (convergência), 05 (segredos), 07 (CI/CD e imagens).
 
 ## 1. Escopo
@@ -26,12 +27,12 @@ A imagem `tnf-messaging` só existe a partir da E8 (09). Até lá, `service_repl
 
 ### Quem fala com quem (*Decidido* pelo autor)
 ```
-cliente → ALB → frontend (nginx) → backend-som ──(envia eventos)──> messaging ──> RabbitMQ
-                                        │                              │
-                                        └──> RDS                       └──> WhatsApp (saída pela NAT)
+cliente → ALB → frontend (nginx) → backend-som ──(publica eventos)──> RabbitMQ ──(consome)──> messaging ──> WhatsApp (saída pela NAT)
+                                        │
+                                        └──> RDS
 ```
-- **Só o microsserviço usa o RabbitMQ.** O backend não se conecta a ele: apenas **envia eventos ao microsserviço**. Por isso o backend não recebe nenhum segredo do RabbitMQ.
-- **Essa integração ainda não existe no backend** (informado pelo autor). A infra não a implementa (novas funcionalidades estão fora do escopo), mas **fixa o contrato** que o backend e o microsserviço devem seguir quando forem escritos (seção 6.5).
+- **O backend publica os eventos de pedido no RabbitMQ e o microsserviço os consome** (*Revisto* em 26/10/2026, na E6, E9). O backend já tem o `spring-boot-starter-amqp` e um publicador (`RabbitMQPedidoEventPublisher`, branch `feat/producer-pedido`), então recebe o endereço do RabbitMQ e os dois segredos dele. O contrato HTTP de 6.5 continua descrito, mas deixa de ser o caminho dos eventos de pedido.
+- O lado consumidor (microsserviço) ainda não está configurado; a infra não implementa funcionalidades, só entrega o RabbitMQ, o endereço e as credenciais.
 
 ## 3. Rede (*Decidido*)
 - Uma rede overlay única, **`tnf-net`**, criada pelo líder antes das stacks e usada por todas como rede externa. Todos os serviços se encontram pelo nome, entre nós web e app.
@@ -55,8 +56,8 @@ Cada segredo tem três nomes ao longo do caminho:
 |---|---|---|---|
 | `db_password` | `tnf_db_password` | `/run/secrets/DB_PASSWORD` | backend |
 | `jwt_secret` | `tnf_jwt_secret` | `/run/secrets/JWT_SECRET` | backend |
-| `rabbitmq_user` | `tnf_rabbitmq_user` | `/run/secrets/rabbitmq_user` | RabbitMQ e microsserviço |
-| `rabbitmq_password` | `tnf_rabbitmq_password` | `/run/secrets/rabbitmq_password` | RabbitMQ e microsserviço |
+| `rabbitmq_user` | `tnf_rabbitmq_user` | RabbitMQ: `/run/secrets/rabbitmq_user`; backend: `/run/secrets/RABBITMQ_USER` | RabbitMQ, backend e microsserviço |
+| `rabbitmq_password` | `tnf_rabbitmq_password` | RabbitMQ: `/run/secrets/rabbitmq_password`; backend: `/run/secrets/RABBITMQ_PASSWORD` | RabbitMQ, backend e microsserviço |
 | `messaging_api_key` | `tnf_messaging_api_key` | backend: `/run/secrets/MESSAGING_API_KEY`; microsserviço: nome **PENDENTE** | backend e microsserviço |
 | *(chaves de `messaging_secrets`)* | `tnf_<chave>` | **PENDENTE** | microsserviço (só existem com a mensageria ligada) |
 
@@ -89,10 +90,10 @@ Cada segredo tem três nomes ao longo do caminho:
 | Imagem | `${IMAGE_BACKEND}` |
 | Posicionamento | `node.labels.tier == app`, no máximo 1 réplica por nó |
 | Porta | **não publica** nada no host; só `8080` dentro da rede `tnf-net` |
-| Variáveis | `DB_URL`, `DB_USER`, `PORT=8080`, `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`, `MESSAGING_URL=http://messaging:${MESSAGING_PORT}` (6.5) |
-| Segredos | `db_password`, `jwt_secret`, `messaging_api_key`; nenhum do RabbitMQ |
+| Variáveis | `DB_URL`, `DB_USER`, `PORT=8080`, `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`, `MESSAGING_URL=http://messaging:${MESSAGING_PORT}` (6.5), `SPRING_RABBITMQ_HOST=rabbitmq` e `SPRING_RABBITMQ_USERNAME`/`SPRING_RABBITMQ_PASSWORD` com os valores `${RABBITMQ_USER}` e `${RABBITMQ_PASSWORD}`: só os nomes das propriedades vindas dos segredos, resolvidos pelo Spring, sem o valor em variável de ambiente (R6) |
+| Segredos | `db_password`, `jwt_secret`, `messaging_api_key`, `rabbitmq_user` e `rabbitmq_password` (E9) |
 | Réplicas | `${REPLICAS_BACKEND}` (dev 1, prod 2) |
-| Saúde | Comando (*Decidido* em 10/10/2026): `CMD-SHELL` com `wget -q -O /dev/null http://127.0.0.1:8080<caminho> \|\| curl -fsS -o /dev/null http://127.0.0.1:8080<caminho>`, esperando 200; a imagem precisa ter `wget` ou `curl` (07, 4.4; C17). **PENDENTE** o `<caminho>`: precisa de um endpoint HTTP que responda 200 quando a aplicação está pronta e conectada ao banco (por exemplo `/actuator/health`; ver pendências) |
+| Saúde | Comando (*Decidido* em 10/10/2026; caminho em 26/10/2026): `CMD-SHELL` com `wget -q -O /dev/null http://127.0.0.1:8080/api/v1/health \|\| curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/health`, esperando 200; intervalo 15 s, 3 falhas, período de partida 90 s. O `/api/v1/health` é público (`SecurityConfig`) e só responde depois que a aplicação subiu, o que inclui a conexão com o banco feita na partida; a imagem precisa ter `wget` ou `curl` (07, 4.4; C17) |
 | Atualização | uma réplica por vez, **derrubar a antiga antes de subir a nova** (`stop-first`), rollback automático se não ficar saudável em 60 s |
 | Limite de memória | 768 MB, com reserva de 512 MB; a JVM é limitada por `JAVA_TOOL_OPTIONS=-XX:MaxRAMPercentage=70` |
 - Por que `stop-first` no backend: com duas JVMs ao mesmo tempo, um nó `t3.small` (2 GB) estoura a memória (e, como no frontend, `start-first` não funcionaria com `max_replicas_per_node: 1`). Com 2 réplicas em nós diferentes (prod), uma atende enquanto a outra atualiza, então não há indisponibilidade. Com 1 réplica (dev), há uma interrupção curta durante o deploy, aceitável.
@@ -103,13 +104,13 @@ Cada segredo tem três nomes ao longo do caminho:
 ### 6.3 `rabbitmq`
 | Item | Valor |
 |---|---|
-| Imagem | `rabbitmq` série 4.x, sem o plugin de gerenciamento (versão exata fixada na implementação) |
+| Imagem | `rabbitmq:4.1.4` (série 4.x, sem o plugin de gerenciamento) |
 | Posicionamento | `node.labels.rabbitmq == true` (o nó `app-1`), 1 réplica |
 | Nome do host | **fixo**: `hostname: rabbitmq` e `RABBITMQ_NODENAME=rabbit@rabbitmq` |
 | Volume | volume local nomeado `rabbitmq_data` em `/var/lib/rabbitmq` |
-| Porta | só `5672` dentro da rede `tnf-net`; sem publicação. Usada **apenas pelo microsserviço** |
-| Usuário e senha | `RABBITMQ_DEFAULT_USER_FILE` e `RABBITMQ_DEFAULT_PASS_FILE` apontando para os segredos Docker |
-| Filas e permissões | arquivo `definitions.json` carregado na inicialização (`load_definitions` em `rabbitmq.conf`), entregue como *config* do Docker. Lista de filas **PENDENTE** (depende do microsserviço) |
+| Porta | só `5672` dentro da rede `tnf-net`; sem publicação. Usada pelo backend (publica) e pelo microsserviço (consome) |
+| Usuário e senha | lidos dos segredos Docker pelo `entrypoint` do serviço, que exporta `RABBITMQ_DEFAULT_USER` e `RABBITMQ_DEFAULT_PASS` só para o processo do RabbitMQ (não aparecem no `docker inspect`, R6) |
+| Filas e permissões | arquivo `definitions.json` carregado na inicialização (`load_definitions` em `rabbitmq.conf`), entregue como *config* do Docker, **a partir da E8** (*Decidido* em 26/10/2026): carregado no boot, ele faz o RabbitMQ não criar o usuário padrão, então entra junto com a configuração do microsserviço. Até lá, a troca e a fila do backend são declaradas pelo próprio Spring AMQP. Lista de filas **PENDENTE** |
 | Saúde | `rabbitmq-diagnostics -q ping`; intervalo 30 s, período de partida 60 s |
 | Atualização | `stop-first` (instância única com volume) |
 | Limite de memória | 512 MB |
@@ -221,7 +222,7 @@ Como o backend ainda não envia eventos, o que a infra garante desde já é o se
 | R9 | `service_replicas.backend = 2` com `app_node_count = 1` | rejeitado no `plan` (T14) |
 | R10 | Cada serviço no seu grupo de nós | frontend só em `tier=web`; backend em `tier=app`; mensageria (quando ligada) só no nó `messaging=true` (o `app-1`); RabbitMQ só no nó `rabbitmq=true` |
 | R11 | Logs de um container chegam ao bronze | linha com o nome do serviço no registro |
-| R12 | **Com a mensageria ligada (E8):** dentro do container do backend, conferir `MESSAGING_URL` e o arquivo `/run/secrets/MESSAGING_API_KEY`; resolver `messaging` pela rede | variável e segredo presentes; o nome resolve; o backend não tem segredos do RabbitMQ *(a chamada real só pode ser testada quando a integração existir)*. Com a mensageria desligada, variável e segredo estão presentes e o nome **não** resolve |
+| R12 | **Com a mensageria ligada (E8):** dentro do container do backend, conferir `MESSAGING_URL` e o arquivo `/run/secrets/MESSAGING_API_KEY`; resolver `messaging` pela rede | variável e segredo presentes; o nome resolve *(a chamada real só pode ser testada quando a integração existir)*. Com a mensageria desligada, variável e segredo estão presentes e o nome **não** resolve |
 | R13 | Dev com 1 réplica de frontend: publicar uma imagem nova e fazer o deploy | a atualização termina; uma pausa curta é esperada e aceita |
 | R14 | Com o ambiente no ar, mudar `service_replicas.messaging` de `0` para `1` (imagem publicada, `messaging_port` informada), rodar `infra up`, e depois voltar para `0` e rodar `infra up` | ao ligar, em até 3 min o serviço `messaging` existe, com o *digest* da etiqueta e todas as réplicas; ao desligar, em até 3 min o serviço é removido da `tnf-app`, `backend-som`, RabbitMQ e frontend ficam intactos e `converge.json` volta a `ready` com a mensageria `off` |
 | R15 | `service_replicas.messaging = 2` (com nós app suficientes) | rejeitado no `plan` com a mensagem de 03, seção 3.4 (T17) |
@@ -239,7 +240,7 @@ Como o backend ainda não envia eventos, o que a infra garante desde já é o se
 | E6 | RabbitMQ com hostname fixo, volume local, usuário padrão por segredo e filas por `definitions.json` | **Decidido** (09/10/2026) |
 | E7 | `max_replicas_per_node: 1` e validação `réplicas ≤ nós` (frontend e backend) | **Decidido** (09/10/2026) |
 | E8 | Limites de memória: frontend 128 MB, backend 768 MB, RabbitMQ 512 MB (a medir) | **Decidido** (09/10/2026) |
-| E9 | Só o microsserviço usa o RabbitMQ; o backend envia eventos ao microsserviço | **Decidido** (autor) |
+| E9 | O backend publica os eventos de pedido no RabbitMQ e o microsserviço os consome; o backend recebe o endereço e os dois segredos do RabbitMQ | **Revisto** em 26/10/2026, na E6 (antes: só o microsserviço usava o RabbitMQ), porque o backend da `main` já publica no RabbitMQ |
 | E10 | Contrato backend → microsserviço por HTTP: `MESSAGING_URL`, `MESSAGING_API_KEY` e porta do microsserviço (6.5) | **Decidido** (09/10/2026); porta e validação da chave dependem da configuração do microsserviço |
 | E11 | Mensageria desligada com `REPLICAS_MESSAGING=0` até a E8: compose da mensageria em arquivo separado (`stacks/app-messaging.yml`), incluído só quando ligada, com `--prune` na `tnf-app`; o RabbitMQ segue implantado | **Decidido** (10/10/2026) |
 | E12 | `stack.env` carrega também `EXPECTED_NODES` e `MANAGER_COUNT`, não usados pelos compose files: servem à espera e à limpeza de nós no líder e à recusa de mudar `manager_count` no `infra up`. Em 11/10/2026 (item 22) passou a carregar também `DB_SCHEMA_REPO_URL`, `DB_SCHEMA_REF` e `DB_SCHEMA_PATH`, igualmente fora dos compose files: servem ao `db-init` do líder | **Decidido** (10/10/2026; ampliado em 11/10/2026) |
@@ -249,6 +250,6 @@ Como o backend ainda não envia eventos, o que a infra garante desde já é o se
 
 ## 12. Pendências
 - **Configuração do microsserviço de mensageria (PENDENTE):** imagem, porta que recebe os eventos, variáveis, segredos, verificação de saúde, memória, se aceita mais de uma réplica (o que permitiria rever E13), a lista de filas do RabbitMQ e se ele valida a `MESSAGING_API_KEY`. Pelo item 19, também: **como ele se autentica no WhatsApp** (biblioteca com sessão e QR code ou código de pareamento, API oficial com token, ou outra forma), **em que caminho grava a sessão** (para o volume `messaging_session`), qual o texto do log de "conectado", o que faz com eventos recebidos antes do pareamento e **quais números de WhatsApp** serão usados em dev e em prod. Só bloqueia a E8.
-- **Caminho do endpoint de saúde do backend:** existe um endpoint (por exemplo o Actuator do Spring) que responda 200 quando a aplicação está pronta e conectada ao banco? Qual o caminho? Define o `<caminho>` de 6.2. A ferramenta (`wget` ou `curl`) deixou de ser pendência: está decidida em E14 e é conferida na E5.
+- ~~Caminho do endpoint de saúde do backend~~: resolvido em 26/10/2026, `/api/v1/health` (6.2).
 - **Imagem do frontend baseada na oficial do nginx** (logs em stdout, 6.1).
 - Itens da auditoria de 10/10/2026 que ainda alteram este documento (ver 00): nenhum pendente (o item 19 foi resolvido em 6.4, 6.4.1 e E15, e o item 22, em 11/10/2026, só ampliou o `stack.env` na seção 4 e em E12).
