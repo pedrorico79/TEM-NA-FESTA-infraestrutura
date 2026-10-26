@@ -125,6 +125,14 @@ setup() {
   [[ "$output" == *"o nó tem-na-festa-dev-web-1 não deu nenhum sinal"*"rota da NAT"* ]]
 }
 
+@test "down apaga as chaves de host conhecidas do ambiente (os IPs fixos voltam com chaves novas)" {
+  mkdir -p "$REPO/.infra"
+  echo "10.0.3.10 ssh-ed25519 AAAAantiga" >"$REPO/.infra/known_hosts_dev"
+  run "$REPO/infra" down dev --yes </dev/null
+  [ "$status" -eq 0 ]
+  [ ! -f "$REPO/.infra/known_hosts_dev" ]
+}
+
 @test "down apaga o bucket de artefatos depois do destroy" {
   touch "$FIX/buckets/tnf-dev-artifacts-000000000000-us-east-1"
   run "$REPO/infra" down dev --yes </dev/null

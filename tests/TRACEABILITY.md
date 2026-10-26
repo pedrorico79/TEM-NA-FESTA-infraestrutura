@@ -30,40 +30,40 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | S2 | E6 | manual: no laboratório, infra up repetido sem mudanças não altera nada | pendente |
 | S3 | E6 | manual: no laboratório, backend de 1 para 2 réplicas com infra up | pendente |
 | S4 | E4a | manual: no laboratório, parar o líder com manager_count = 3: app-3 assumiu e a convergência seguiu (12/10/2026) | verificado |
-| S5 | E9 | manual: no laboratório, infra down e infra up com o banco restaurado do snapshot final | pendente |
+| S5 | E9 | manual: no laboratório, infra down e infra up com o banco restaurado do snapshot final (25/10/2026: final mais recente escolhido sozinho, linhas de teste preservadas) | verificado |
 | S6 | E4a | bats: tests/shell/infra-env.bats (S6) e manual: no laboratório, remover a rota da NAT durante a subida (12/10/2026: dispensado pelo autor, considerado certo) | verificado |
 | S7 | E1 | tests/contract/T4.tftest.hcl (mesmo verificador de T4: T4_managers_maior_que_nos_app_recusado) | verificado |
 | S8 | E7 | manual: no laboratório, mover a etiqueta do ambiente para uma imagem nova | pendente |
-| S9 | E4b | manual: no laboratório, reiniciar o timer de convergência ou trocar o líder sem repetir o db-init | pendente |
-| S10 | E4b | manual: no laboratório, primeira subida sem snapshot com o db-init | pendente |
+| S9 | E4b | manual: no laboratório, convergência reiniciada sem repetir o db-init (20/10/2026) | verificado |
+| S10 | E4b | manual: no laboratório, primeira subida sem snapshot: o db-init aplicou o script da tag fixada e criou o tnf_app (20/10/2026); o backend iniciado fica para a E6 | verificado |
 | S11 | E7 | manual: no laboratório, primeira subida com a etiqueta do backend numa imagem que não fica saudável | pendente |
 | S12 | E3 | manual: no laboratório, interromper o terraform com kill -9 e recuperar o lock pelo infra (12/10/2026, E3) | verificado |
 | S13 | E6 | manual: no laboratório, aumentar e reduzir nós web com o ambiente no ar | pendente |
 | S14 | E6 | manual: no laboratório, manager_count recusado e worker esperado parado vira degraded | pendente |
 | Q1 | E4a | manual: no laboratório, conferência descrita em 05, Q1 | verificado |
 | Q2 | E6 | manual: no laboratório, conferência descrita em 05, Q2 | pendente |
-| Q3 | E9 | manual: no laboratório, conferência descrita em 05, Q3 | pendente |
-| Q4 | E4b | manual: no laboratório, conferência descrita em 05, Q4 | pendente |
-| Q5 | E4b | manual: no laboratório, conferência descrita em 05, Q5 | pendente |
+| Q3 | E9 | manual: no laboratório, linha de teste presente depois de infra down e infra up (25/10/2026) | verificado |
+| Q4 | E4b | manual: no laboratório, depois do restore o tnf-db-shell entra com a senha nova e a senha antiga do tnf_admin recebe Access denied (25/10/2026) | verificado |
+| Q5 | E4b | manual: no laboratório, terraform destroy direto criou tem-na-festa-dev-final-<id do ciclo> e removeu os parâmetros SSM de /tnf (25/10/2026) | verificado |
 | Q6 | E9 | manual: no laboratório, conferência descrita em 05, Q6 | pendente |
-| Q7 | E4b | manual: no laboratório, conferência descrita em 05, Q7 | pendente |
+| Q7 | E4b | manual: no laboratório, tabelas criadas pelo script da tag fixada (20/10/2026); primeiro admin criado pelo procedimento do README e preservado no ciclo infra down e infra up (25/10/2026); a aplicação iniciada fica para a E6 | verificado |
 | Q8 | E8 | bats: tests/shell/secrets-env.bats (Q8) e manual: no laboratório, infra up com e sem secrets.env | pendente |
 | Q9 | E2 | manual: no laboratório, inspecionar os buckets de state e bronze no console (12/10/2026: acesso público bloqueado, SSE-S3, só TLS e versionamento no state) | verificado |
 | Q10 | E6 | manual: no laboratório, conferência descrita em 05, Q10 | pendente |
-| Q11 | E4b | manual: no laboratório, conferência descrita em 05, Q11 | pendente |
+| Q11 | E4b | manual: no laboratório, mysql.user e SHOW GRANTS do tnf_app: só os 8 privilégios em tem_na_festa.*, sem DROP nem GRANT OPTION (20/10/2026) | verificado |
 | Q12 | E7 | manual: no laboratório, conferência descrita em 05, Q12 | pendente |
-| Q13 | E4b | manual: no laboratório, conferência descrita em 05, Q13 | pendente |
+| Q13 | E4b | bats: tests/shell/db-init.bats (Q13) e manual: no laboratório, db_schema_ref inexistente e correção sem recriar o ambiente (20/10/2026) | verificado |
 | Q14 | E6 | manual: no laboratório, conferência descrita em 05, Q14 | pendente |
-| Q15 | E4b | manual: no laboratório, conferência descrita em 05, Q15 | pendente |
+| Q15 | E4b | manual: no laboratório, tnf-db-shell no app-1 sem senha em ps (20/10/2026); bastion e web-1 sem cliente mysql e sem alcançar a porta 3306 do RDS (25/10/2026) | verificado |
 | Q16 | E6 | manual: no laboratório, conferência descrita em 05, Q16 | verificado |
 | Q17 | E4a | manual: no laboratório, conferência descrita em 05, Q17 | verificado |
 | Q18 | E6 | manual: no laboratório, conferência descrita em 05, Q18 | pendente |
-| Q19 | E4b | manual: no laboratório, conferência descrita em 05, Q19 | pendente |
-| Q20 | E4b | manual: no laboratório, conferência descrita em 05, Q20 | pendente |
-| Q21 | E4b | manual: no laboratório, conferência descrita em 05, Q21 | pendente |
+| Q19 | E4b | bats: tests/shell/snapshots.bats (G23, recusa de outro ambiente e de inexistente) e manual: no laboratório, manual e final com os nomes do padrão, up sem opções restaurou o final, up --snapshot do manual com db_schema_* em branco restaurou a linha gravada antes dele (25/10/2026) | verificado |
+| Q20 | E4b | bats: tests/shell/snapshots.bats (G23, a poda do down mantém 3 de cada tipo e não toca nos de outro ambiente); os 4 ciclos reais no laboratório foram dispensados pelo custo (25/10/2026) | verificado |
+| Q21 | E4b | manual: no laboratório, com o ambiente no ar e um manual mais novo, infra up não mexeu no RDS e a linha posterior continuou lá; --snapshot recusado com mensagem; plan direto com db_snapshot_identifier não recria o RDS (25/10/2026) | verificado |
 | Q22 | E6 | manual: no laboratório, conferência descrita em 05, Q22 (12/10/2026, E4a: (a) IMDSv2 obrigatório e limite 1 conferidos nas 3 instâncias; (b) dispensado pelo autor; (c) fica para a E6) | pendente |
 | Q23 | E8 | manual: no laboratório, conferência descrita em 05, Q23 | pendente |
-| Q24 | E4b | manual: no laboratório, conferência descrita em 05, Q24 | pendente |
+| Q24 | E4b | bats: tests/shell/db-init.bats (Q24 e banco vazio com db_schema_* em branco) e manual: no laboratório, tag descartável que falha no meio, marcador started e correção sem recriar o ambiente (20/10/2026: (a), (b) e (c)); (d) conferido só pelo bats, porque ao vivo exigiria apagar todos os snapshots do dev e mais três ciclos do RDS (25/10/2026) | verificado |
 | R1 | E6 | manual: no laboratório, conferência descrita em 06, R1 | pendente |
 | R2 | E6 | manual: no laboratório, conferência descrita em 06, R2 | pendente |
 | R3 | E6 | manual: no laboratório, conferência descrita em 06, R3 | pendente |
@@ -122,7 +122,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | G20 | E3 | manual: no laboratório, interromper o infra down com kill -9 e recuperar o lock (12/10/2026, E3) | verificado |
 | G21 | E2 | bats: tests/shell/preflight.bats (G21) | verificado |
 | G22 | E4a | bats: tests/shell/preflight.bats (G22) e manual: no laboratório, mudar manager_count com o ambiente no ar: recusado antes do apply (12/10/2026) | verificado |
-| G23 | E4b | bats: tests/shell/snapshots.bats (G23) | pendente |
+| G23 | E4b | bats: tests/shell/snapshots.bats (G23) | verificado |
 | G24 | E4a | bats: tests/shell/access.bats (G24a a G24d) | verificado |
 | G25 | E4a | manual: no laboratório, infra ssh de outra máquina e outra rede (12/10/2026: chave recriada conferida; troca de rede dispensada pelo autor, considerada certa) | verificado |
 | P1 | E0 | manual: revisão de 09 (cada etapa tem entrega, Pronto quando e IDs existentes) | verificado |

@@ -5,6 +5,11 @@
 # ao fim (05, A6). Instalado só nos nós app.
 set -euo pipefail
 
+# O arquivo de opções vai para /run, que só o root grava: reexecuta com sudo.
+if [[ "$(id -u)" -ne 0 ]]; then
+  exec sudo "$0" "$@"
+fi
+
 # shellcheck source=/dev/null
 source /etc/tnf-node.env
 S3="s3://$TNF_ARTIFACTS_BUCKET"

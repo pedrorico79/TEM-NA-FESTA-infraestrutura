@@ -61,6 +61,7 @@ case "$1 $2" in
   "elbv2 describe-load-balancers") cat "$FIX/aws/elb-lbs.json" 2>/dev/null || echo '{"LoadBalancers":[]}' ;;
   "elbv2 describe-tags") cat "$FIX/aws/elb-tags.json" 2>/dev/null || echo '{"TagDescriptions":[]}' ;;
   "rds describe-db-instances") cat "$FIX/aws/rds.json" 2>/dev/null || echo '{"DBInstances":[]}' ;;
+  "rds describe-db-snapshots") cat "$FIX/aws/rds-snapshots.json" 2>/dev/null || echo '{"DBSnapshots":[]}' ;;
   "ec2 describe-security-group-rules") cat "$FIX/aws/sg-rules.json" 2>/dev/null || echo '{"SecurityGroupRules":[]}' ;;
   "s3 ls")
     dir="$FIX/s3/${3#s3://}"

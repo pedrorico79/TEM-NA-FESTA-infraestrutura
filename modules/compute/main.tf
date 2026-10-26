@@ -95,6 +95,11 @@ resource "aws_s3_object" "fluent_bit" {
   })
 }
 
+# Scripts de node/ já no bucket antes de as instâncias nascerem (04, seção 4).
+resource "terraform_data" "node_objects" {
+  input = var.node_objects
+}
+
 # --- Nós do Swarm --------------------------------------------------------------------
 
 resource "aws_instance" "node" {
@@ -140,7 +145,7 @@ resource "aws_instance" "node" {
     ignore_changes = [ami]
   }
 
-  depends_on = [aws_s3_object.fluent_bit]
+  depends_on = [aws_s3_object.fluent_bit, terraform_data.node_objects]
 }
 
 # --- Bastion ---------------------------------------------------------------------------
@@ -187,5 +192,5 @@ resource "aws_instance" "bastion" {
     ignore_changes = [ami]
   }
 
-  depends_on = [aws_s3_object.fluent_bit]
+  depends_on = [aws_s3_object.fluent_bit, terraform_data.node_objects]
 }

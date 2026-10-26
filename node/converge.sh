@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Convergência do ambiente (04, seção 7), executada a cada 60 s pelo
 # tnf-converge.timer em todos os managers; só age no líder atual do Swarm.
-# Nesta etapa (E4a de 09): espera do READY e download dos arquivos (passo 3),
-# nós esperados e limpeza (passo 1), rótulos (passo 2) e status (passo 9).
-# Rede, segredos e stacks chegam na E6; o db-init, na E4b.
+# Até a E4b de 09: espera do READY e download dos arquivos (passo 3), nós
+# esperados e limpeza (passo 1), rótulos (passo 2), inicialização do banco
+# (passo 6, tnf-db-init) e status (passo 9). Rede, segredos e stacks chegam
+# na E6.
 set -euo pipefail
 
 # shellcheck source=/dev/null
@@ -121,19 +122,33 @@ main() {
   check_expected_nodes
   apply_labels
 
-  local state=ready msg="todos os nós esperados estão Ready e rotulados"
+  # Passo 6: banco (04, seção 7; 05, B5). Saída: ok, waiting <msg> ou failed <msg>.
+  local db
+  db="$(/usr/local/sbin/tnf-db-init "$WORK/stack.env" "$MANIFEST_HASH" 2>>"$LOG")" ||
+    db="failed o db-init terminou com erro inesperado; veja /var/log/tnf-db-init.log no líder"
+  DB_STATE="${db%% *}"
+  DB_MSG="${db#* }"
+  [[ "$DB_STATE" == ok ]] && DB_MSG=""
+
+  local state=ready msg="todos os nós esperados estão Ready e rotulados, e o banco está inicializado"
   if [[ -n "${MANAGER_OUT// /}" ]]; then
     state=degraded
     msg="nó(s) manager Down fora de EXPECTED_NODES:${MANAGER_OUT}; o líder nunca remove um manager. Recrie o ambiente (infra down e infra up)."
   elif [[ -n "${UNLABELED// /}" ]]; then
     state=degraded
     msg="nó(s) do Swarm sem rótulo, porque o hostname não termina em -web-<n> nem -app-<n>:${UNLABELED}. O formato do nome é contrato entre o Terraform e o converge.sh (03, seção 5)."
+  elif [[ "$DB_STATE" == failed ]]; then
+    state=degraded
+    msg="banco: $DB_MSG"
   elif [[ -n "$MISSING" && "$WAIT_EXPIRED" == true ]]; then
     state=degraded
     msg="nós esperados ausentes ou Down depois de 20 minutos: $MISSING. Não há autorrecuperação: recrie o ambiente (infra down e infra up)."
   elif [[ -n "$MISSING" ]]; then
     state=waiting
     msg="aguardando os nós esperados: $MISSING"
+  elif [[ "$DB_STATE" == waiting ]]; then
+    state=waiting
+    msg="banco: $DB_MSG"
   fi
   write_status "$state" "$msg" "$MISSING" "${UNLABELED# }" "${REMOVED# }"
   log "converge: $state ($msg)"

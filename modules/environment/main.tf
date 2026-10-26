@@ -118,8 +118,8 @@ locals {
 }
 
 # --- stack.env (03, seção 5; 06, seção 4) ----------------------------------------
-# Valores sem segredos lidos pelo líder do Swarm. DB_ENDPOINT entra com o
-# módulo database (E4b). Com a mensageria desligada, IMAGE_MESSAGING e
+# Valores sem segredos lidos pelo líder do Swarm. DB_ENDPOINT vem do módulo
+# database (E4b). Com a mensageria desligada, IMAGE_MESSAGING e
 # MESSAGING_PORT são gravados, mas ignorados. DB_SCHEMA_* ficam em branco
 # quando o banco nasce de um snapshot.
 
@@ -135,6 +135,7 @@ locals {
     REPLICAS_FRONTEND  = tostring(var.service_replicas.frontend)
     REPLICAS_BACKEND   = tostring(var.service_replicas.backend)
     REPLICAS_MESSAGING = tostring(var.service_replicas.messaging)
+    DB_ENDPOINT        = module.database.endpoint
     DB_NAME            = var.db_name
     DB_USER            = local.db_app_username
     MESSAGING_PORT     = var.messaging_port == null ? "" : tostring(var.messaging_port)
@@ -195,6 +196,22 @@ module "artifacts" {
   stacks_dir  = "${local.repo_root}/stacks"
 }
 
+module "database" {
+  source = "../database"
+
+  name_prefix          = local.prefix
+  subnet_ids           = module.network.subnet_ids["db"]
+  security_group_id    = module.security.security_group_ids["rds"]
+  engine_version       = var.db_engine_version
+  instance_class       = var.db_instance_class
+  allocated_storage_gb = var.db_allocated_storage_gb
+  multi_az             = var.db_multi_az
+  db_name              = var.db_name
+  master_username      = var.db_master_username
+  master_password      = module.secrets.db_admin_password
+  snapshot_identifier  = var.db_snapshot_identifier
+}
+
 module "compute" {
   source = "../compute"
 
@@ -215,7 +232,9 @@ module "compute" {
   bronze_region         = var.bronze_bucket_region
   ssh_private_key_path  = local.ssh_private_key_path
   node_dir              = "${local.repo_root}/node"
+  node_objects          = module.artifacts.node_objects
 
-  # EC2 depois das rotas da NAT e dos scripts no bucket (04, seção 4).
-  depends_on = [module.network, module.artifacts, module.secrets]
+  # EC2 depois das rotas da NAT (04, seção 4); os scripts no bucket chegam por
+  # node_objects. O RDS cria em paralelo: só o READY espera por ele.
+  depends_on = [module.network, module.secrets]
 }
