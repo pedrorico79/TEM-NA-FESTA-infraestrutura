@@ -27,7 +27,7 @@ Depende de todos os anteriores. Define **em que ordem** o que está especificado
 | *Opcional:* ligar a aprovação por revisor em `prod` (*GitHub Environments*), se o plano do GitHub permitir; a trava de branch de prod não depende disso (07, seção 4.5) | você | E5 |
 | Caminho do endpoint de saúde do backend (06, seção 12) | você | E6 |
 | **Configuração do microsserviço** (06, seção 6.4) e contrato 6.5, incluindo **como ele se autentica no WhatsApp** (sessão com QR code ou código de pareamento, API oficial com token, ou outra forma), o caminho em que grava a sessão e os **números de WhatsApp** de dev e de prod (06, seção 6.4.1) | você | E8 |
-| Decisões pendentes do spec 10 (DA1, DA3, DA6 e DA7, seção 9) | você | E10 |
+| Decisões pendentes do spec 10 (DA1, DA6 e DA7, seção 9) | você | E10 |
 | `TEM-NA-FESTA-dataset` com o `handler` das duas Lambdas, as regras de validação e o arquivo de rejeições da "Especificação de Base de Dados", as saídas bruta e normalizadas e o controle de prazo (10, seção 3), e uma **tag** para o `dataset_ref` | você | E10 |
 | **Usuário do sistema para a coleta**, criado à mão no banco do ambiente, e o email e a senha no `secrets.env` (10, seção 8) | você | E10 |
 | Enums do backend com os valores de `status_producao`, `tipo_pagamento` e `status_pagamento` (10, seção 10) | leitura do repositório do backend | E11 |
