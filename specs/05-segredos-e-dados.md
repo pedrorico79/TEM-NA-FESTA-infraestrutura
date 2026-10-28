@@ -59,6 +59,7 @@ O backend não usa o administrador do RDS (02, seção 6). Uma rotina de inicial
 ### A5. Segredos manuais
 - **Só existem com a mensageria ligada** (`service_replicas.messaging > 0`, 03 seção 3.4). Hoje o único segredo manual é `messaging_secrets`; enquanto a mensageria estiver desligada (até a E8), **não há segredo manual**, o `secrets.env` não é exigido e `infra up` não o procura.
 - Com a mensageria ligada, ficam em um arquivo local **`secrets.env`** na raiz do repositório de infra, **fora do Git** (`.gitignore`) e com permissão `600` (dentro do sistema de arquivos do WSL, 08 seção 5.1). O script `infra` o carrega e o entrega ao Terraform como variáveis de ambiente `TF_VAR_*` sensíveis (que viram os parâmetros SSM de A2).
+- Chave hoje (E8): `whapi_token`, o token da API da Whapi.
 - Um comando `infra init-secrets` cria o arquivo perguntando os valores e confere o formato; `infra up` aborta antes do `apply` se, **com a mensageria ligada**, faltar algum valor obrigatório.
 - O token do Docker Hub para publicar imagens **não** entra aqui: fica como *secret* dos repositórios de aplicação no GitHub (07).
 - O `secrets.env` é o único segredo que **não** se recupera de outra máquina: ele fica só onde você o criou (ou é recriado por `infra init-secrets`). Só é necessário com a mensageria ligada.
@@ -80,7 +81,8 @@ Para depurar ou corrigir dados, o caminho suportado é:
 - O bastion e os nós web não têm cliente nem acesso à porta 3306 do RDS (02, seção 5). Não há túnel SSH até o banco.
 - O administrador do RDS tem poder total; o acesso fica restrito a quem tem a chave SSH do bastion e acesso ao nó app. **Um container do Swarm não consegue assumir a permissão da instância** (IMDSv2 obrigatório e limite de saltos 1, A6; 02, A14) e, portanto, não lê o parâmetro `db_admin_password`. Quem tem SSH no nó lê, por definição, e esse é o acesso previsto.
 
-### A8. Autenticação do microsserviço no WhatsApp (*Decidido* em 10/10/2026, auditoria item 19; detalhes PENDENTES)
+### A8. Autenticação do microsserviço no WhatsApp (*Decidido* em 10/10/2026, auditoria item 19; forma definida na E8)
+**Na E8 (28/10/2026):** o microsserviço usa a API da Whapi com um token, o segredo manual `whapi_token` de `messaging_secrets` (A5), criado por `infra init-secrets` e entregue como o segredo Docker `tnf_whapi_token`. Não há sessão em disco nem pareamento.
 A infra trata três formas possíveis, conforme a configuração do microsserviço (06, seção 6.4.1):
 | Forma | Credencial | Tratamento |
 |---|---|---|
@@ -189,6 +191,8 @@ O MySQL não desfaz tabelas criadas quando um script falha na metade. Sem cuidad
 **Usuário administrador do sistema (primeiro login) (*Decidido* em 20/10/2026, na E4b):** não vem do script, que é público. Num banco novo (sem snapshot), depois de o `db-init` aplicar o script, você cria o admin pelo `tnf-db-shell`, com a senha em hash BCrypt gerado na sua máquina (procedimento no README). É um passo manual, uma vez por banco novo; os snapshots o preservam nos ciclos seguintes. Como em 04, seção 7, passo 6, o sintoma de ter esquecido o passo é o login do admin falhar.
 
 **Mudanças futuras no schema:** com `ddl-auto=update`, tabelas e colunas novas são criadas pelo próprio backend ao iniciar, então a maior parte das mudanças chega sozinha, inclusive em banco restaurado de snapshot. Alterações que o Hibernate não faz (renomear, remover, mudar tipo ou dados) continuam manuais, feitas com o `tnf-db-shell` (A7), que usa o administrador do RDS (o usuário da aplicação não tem `DROP`, A4). Ferramenta de migração está fora do escopo.
+
+- **Banco do microsserviço (*Decidido* pelo autor em 28/10/2026, na E8):** um segundo schema, `messaging_db_name` (padrão `temnafesta_notificacao`), no mesmo RDS. O `db-init` roda um segundo perfil, com marcador próprio (`status/db-init-messaging.json`), as mesmas regras de B5 e o script do repositório do microsserviço (`messaging_db_schema_*`, fixado por tag). O usuário `tnf_notificacao` tem só `SELECT, INSERT, UPDATE, DELETE` nesse schema (o microsserviço usa `ddl-auto=none`) e a senha gerada `messaging_db_password`. O snapshot do RDS guarda os dois schemas.
 
 ## Critérios de aceite
 | # | Cenário | Esperado |

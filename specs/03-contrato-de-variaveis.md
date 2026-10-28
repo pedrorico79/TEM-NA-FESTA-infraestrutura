@@ -99,7 +99,11 @@ Distribuição em rodízio: o nó de índice `i` (começando em 0) fica na AZ `i
 ### 3.7 Segredos manuais (sensíveis)
 | Variável | Tipo | Padrão | Observação |
 |---|---|---|---|
-| `messaging_secrets` | map(string) | `{}` | chaves exigidas pelo microsserviço (token do WhatsApp etc.); as chaves exatas dependem da configuração do microsserviço, **PENDENTE**. **Só são exigidas quando `service_replicas.messaging > 0`**; com a mensageria desligada o mapa pode ficar vazio e não é preciso ter o `secrets.env` (05, A5) |
+| `messaging_secrets` | map(string) | `{}` | segredos manuais do microsserviço, vindos do `secrets.env` pelo `infra` (05, A5). Desde a E8: `whapi_token`. **Só são exigidos quando `service_replicas.messaging > 0`** |
+| `messaging_db_name` | string | `"temnafesta_notificacao"` | schema do microsserviço no mesmo RDS (E8, 05 B5); o mesmo que o script do schema cria |
+| `messaging_db_schema_repo_url` | string | `""` | repositório público com o script do banco do microsserviço; **obrigatória com a mensageria ligada** (T16) |
+| `messaging_db_schema_ref` | string | `""` | tag ou commit desse script; branch é recusada; **obrigatória com a mensageria ligada** (T16) |
+| `messaging_db_schema_path` | string | `""` | caminho do script no repositório; **obrigatória com a mensageria ligada** (T16) |
 
 - Marcada `sensitive = true`; nunca aparece em saída do Terraform. Mecanismo de entrega em 05.
 - **Não são mais variáveis:** `dockerhub_username` e `dockerhub_token` (repositórios públicos, 07). As credenciais de publicação no Docker Hub existem só como *secrets* dos repositórios de aplicação no GitHub.
@@ -165,7 +169,7 @@ Automatizados com `terraform test` e provedor simulado, sem credenciais da AWS (
 | T13 | `ami_id` informado com `region` diferente da região da AMI | erro do provedor ao criar a instância; documentado como limitação do override (**não automatizável sem a AWS**: verificado no laboratório) |
 | T14 | `service_replicas.backend = 2`, `app_node_count = 1` (e o análogo de `frontend` com `web_node_count`) | erro: réplicas não podem exceder o número de nós do grupo |
 | T15 | (a) `db_schema_ref = "main"` (ou `master`, `develop`, `HEAD`), com ou sem `db_snapshot_identifier`; (b) `dockerhub_namespace = ""`; (c) `db_schema_repo_url`, `db_schema_ref` ou `db_schema_path` em branco com `db_snapshot_identifier = null` | (a) erro: informe uma tag ou um commit, não uma branch; (b) e (c) erro "Preencha `<variável>` em `envs/<env>/terraform.tfvars`" (3.8), listando todas as que faltam |
-| T16 | `service_replicas.messaging = 1` com `messaging_port = null` | erro: informe a porta do microsserviço ou deixe a mensageria desligada (`0`) |
+| T16 | `service_replicas.messaging = 1` com `messaging_port = null`, ou sem `messaging_db_schema_*` ou sem `whapi_token` em `messaging_secrets` (E8) | erro: informe o que falta ou deixe a mensageria desligada (`0`) |
 | T17 | `service_replicas.frontend = 0` (ou `backend = 0`); e `service_replicas.messaging = 2` (com `app_node_count` suficiente) | erro: frontend e backend precisam de ao menos 1 réplica, e a mensageria só pode ter `0` ou `1` (3.4); só a mensageria pode ficar em `0` |
 
 A regra de AMI da seção 3.3 (nós existentes não são substituídos por uma AMI mais nova) **não é um caso de rejeição do `plan`**: é verificada no laboratório por S2 (04), repetindo o `apply`, e conferida na revisão do código (`ignore_changes` nas três famílias de instância).

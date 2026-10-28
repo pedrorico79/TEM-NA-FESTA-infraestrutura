@@ -124,7 +124,8 @@ locals {
 # quando o banco nasce de um snapshot.
 
 locals {
-  db_app_username = "tnf_app" # nome fixo do usuário da aplicação (05, A1)
+  db_app_username       = "tnf_app"         # nome fixo do usuário da aplicação (05, A1)
+  db_messaging_username = "tnf_notificacao" # usuário do microsserviço no schema dele (E8)
 
   restoring_from_snapshot = var.db_snapshot_identifier != null
 
@@ -144,6 +145,14 @@ locals {
     DB_SCHEMA_REPO_URL = local.restoring_from_snapshot ? "" : var.db_schema_repo_url
     DB_SCHEMA_REF      = local.restoring_from_snapshot ? "" : var.db_schema_ref
     DB_SCHEMA_PATH     = local.restoring_from_snapshot ? "" : var.db_schema_path
+    # Banco do microsserviço (E8): sempre preenchidas com a mensageria ligada,
+    # porque um snapshot de antes da E8 não tem esse schema; o db-init só roda
+    # o script se o schema estiver vazio.
+    MESSAGING_DB_NAME            = var.messaging_db_name
+    MESSAGING_DB_USER            = local.db_messaging_username
+    MESSAGING_DB_SCHEMA_REPO_URL = var.messaging_db_schema_repo_url
+    MESSAGING_DB_SCHEMA_REF      = var.messaging_db_schema_ref
+    MESSAGING_DB_SCHEMA_PATH     = var.messaging_db_schema_path
   }
 
   ssh_private_key_path = coalesce(var.ssh_private_key_path, abspath("${path.module}/../../.keys/${var.env}.pem"))

@@ -197,6 +197,30 @@ variable "db_schema_path" {
   type        = string
 }
 
+variable "messaging_db_name" {
+  description = "Ver modules/environment e 03."
+  type        = string
+  default     = null
+}
+
+variable "messaging_db_schema_repo_url" {
+  description = "Ver modules/environment e 03."
+  type        = string
+  default     = null
+}
+
+variable "messaging_db_schema_ref" {
+  description = "Ver modules/environment e 03."
+  type        = string
+  default     = null
+}
+
+variable "messaging_db_schema_path" {
+  description = "Ver modules/environment e 03."
+  type        = string
+  default     = null
+}
+
 variable "admin_ssh_cidrs" {
   description = "Ver modules/environment e 03."
   type        = list(string)
@@ -231,42 +255,46 @@ variable "messaging_secrets" {
 module "environment" {
   source = "../../modules/environment"
 
-  env                     = var.env
-  project_name            = var.project_name
-  region                  = var.region
-  vpc_cidr                = var.vpc_cidr
-  az_names                = var.az_names
-  az_count                = var.az_count
-  nat_mode                = var.nat_mode
-  web_node_count          = var.web_node_count
-  app_node_count          = var.app_node_count
-  manager_count           = var.manager_count
-  bastion_enabled         = var.bastion_enabled
-  ec2_instance_limit      = var.ec2_instance_limit
-  web_instance_type       = var.web_instance_type
-  app_instance_type       = var.app_instance_type
-  bastion_instance_type   = var.bastion_instance_type
-  root_volume_size_gb     = var.root_volume_size_gb
-  ami_id                  = var.ami_id
-  service_replicas        = var.service_replicas
-  image_tags              = var.image_tags
-  dockerhub_namespace     = var.dockerhub_namespace
-  messaging_port          = var.messaging_port
-  db_instance_class       = var.db_instance_class
-  db_allocated_storage_gb = var.db_allocated_storage_gb
-  db_multi_az             = var.db_multi_az
-  db_engine_version       = var.db_engine_version
-  db_name                 = var.db_name
-  db_master_username      = var.db_master_username
-  db_snapshot_identifier  = var.db_snapshot_identifier
-  db_schema_repo_url      = var.db_schema_repo_url
-  db_schema_ref           = var.db_schema_ref
-  db_schema_path          = var.db_schema_path
-  admin_ssh_cidrs         = var.admin_ssh_cidrs
-  ssh_private_key_path    = var.ssh_private_key_path
-  bronze_bucket_name      = var.bronze_bucket_name
-  bronze_bucket_region    = var.bronze_bucket_region
-  messaging_secrets       = var.messaging_secrets
+  env                          = var.env
+  project_name                 = var.project_name
+  region                       = var.region
+  vpc_cidr                     = var.vpc_cidr
+  az_names                     = var.az_names
+  az_count                     = var.az_count
+  nat_mode                     = var.nat_mode
+  web_node_count               = var.web_node_count
+  app_node_count               = var.app_node_count
+  manager_count                = var.manager_count
+  bastion_enabled              = var.bastion_enabled
+  ec2_instance_limit           = var.ec2_instance_limit
+  web_instance_type            = var.web_instance_type
+  app_instance_type            = var.app_instance_type
+  bastion_instance_type        = var.bastion_instance_type
+  root_volume_size_gb          = var.root_volume_size_gb
+  ami_id                       = var.ami_id
+  service_replicas             = var.service_replicas
+  image_tags                   = var.image_tags
+  dockerhub_namespace          = var.dockerhub_namespace
+  messaging_port               = var.messaging_port
+  db_instance_class            = var.db_instance_class
+  db_allocated_storage_gb      = var.db_allocated_storage_gb
+  db_multi_az                  = var.db_multi_az
+  db_engine_version            = var.db_engine_version
+  db_name                      = var.db_name
+  db_master_username           = var.db_master_username
+  db_snapshot_identifier       = var.db_snapshot_identifier
+  db_schema_repo_url           = var.db_schema_repo_url
+  db_schema_ref                = var.db_schema_ref
+  db_schema_path               = var.db_schema_path
+  messaging_db_name            = var.messaging_db_name
+  messaging_db_schema_repo_url = var.messaging_db_schema_repo_url
+  messaging_db_schema_ref      = var.messaging_db_schema_ref
+  messaging_db_schema_path     = var.messaging_db_schema_path
+  admin_ssh_cidrs              = var.admin_ssh_cidrs
+  ssh_private_key_path         = var.ssh_private_key_path
+  bronze_bucket_name           = var.bronze_bucket_name
+  bronze_bucket_region         = var.bronze_bucket_region
+  messaging_secrets            = var.messaging_secrets
 }
 
 output "name_prefix" {

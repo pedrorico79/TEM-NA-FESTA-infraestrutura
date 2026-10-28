@@ -195,3 +195,64 @@ setup() {
   [ "$status" -eq 1 ]
   [[ "$output" == *"o terraform apply falhou"* ]]
 }
+
+# --- Q8: segredos manuais com a mensageria ligada (05, A5) ---------------------------
+
+messaging_off() { sed -i "s/^  messaging = 1$/  messaging = 0/" "$REPO/envs/$1/terraform.tfvars"; }
+no_secrets() { mv "$REPO/secrets.env" "$BATS_TEST_TMPDIR/secrets.env.guardado"; }
+
+@test "Q8: mensageria ligada e sem secrets.env: up aborta com código 2 antes de qualquer chamada ao terraform" {
+  no_secrets
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"não há secrets.env. Crie-o com 'infra init-secrets'"* ]]
+  [ -z "$(terraform_calls)" ]
+}
+
+@test "Q8: mensageria ligada e whapi_token vazio: up aborta com código 2 e nomeia a chave" {
+  printf 'whapi_token=\n' >"$REPO/secrets.env"
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"falta(m) no secrets.env: whapi_token"* ]]
+  [ -z "$(terraform_calls)" ]
+}
+
+@test "Q8: mensageria desligada: up segue sem secrets.env" {
+  no_secrets
+  messaging_off dev
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 0 ]
+}
+
+@test "Q8: o token chega ao terraform por TF_VAR_messaging_secrets, nunca na linha de comando" {
+  fake_bin terraform <<'EOS'
+echo "terraform $* TF_VAR=${TF_VAR_messaging_secrets:-}" >>"$CALLS"
+exit 0
+EOS
+  run "$REPO/infra" plan dev </dev/null
+  grep -q 'plan .*TF_VAR={"whapi_token":"token-de-teste"}' "$CALLS"
+  run grep -q -- "-var=messaging_secrets" "$CALLS"
+  [ "$status" -ne 0 ]
+}
+
+@test "down segue sem secrets.env mesmo com a mensageria ligada" {
+  no_secrets
+  run "$REPO/infra" down dev --yes </dev/null
+  [ "$status" -eq 0 ]
+}
+
+@test "init-secrets grava o secrets.env com permissão 600, sem ecoar o token" {
+  no_secrets
+  run "$REPO/infra" init-secrets <<<"meu-token-123"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$REPO/secrets.env")" = "whapi_token=meu-token-123" ]
+  [ "$(stat -c %a "$REPO/secrets.env")" = 600 ]
+  [[ "$output" != *"meu-token-123"* ]]
+}
+
+@test "init-secrets recusa token vazio e não grava nada" {
+  no_secrets
+  run "$REPO/infra" init-secrets <<<""
+  [ "$status" -eq 2 ]
+  [ ! -f "$REPO/secrets.env" ]
+}

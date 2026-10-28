@@ -1,18 +1,44 @@
-# Stack tnf-app, parte da mensageria (06, seção 6.4): ESQUELETO, não
-# implantado enquanto REPLICAS_MESSAGING = 0. O líder só acrescenta este
-# arquivo ao deploy da tnf-app com a mensageria ligada (E8). PENDENTE até a
-# configuração do microsserviço: segredos e variáveis de conexão, verificação
-# de saúde, memória e, se houver sessão do WhatsApp em disco, o volume
-# messaging_session no caminho que ele usa (06, seção 6.4.1).
+# Stack tnf-app, parte da mensageria (06, seção 6.4): o microsserviço de
+# notificações, implantado só com REPLICAS_MESSAGING > 0 (o líder acrescenta
+# este arquivo ao deploy da tnf-app). Ele consome a fila queue_pedido do
+# RabbitMQ, grava no schema próprio do mesmo RDS e envia pela API da Whapi com
+# um token, sem sessão do WhatsApp em disco (06, seção 6.4.1 não se aplica).
+#
+# Fica no nó com rótulo messaging=true (o app-1), com no máximo 1 réplica. Os
+# segredos viram arquivos em /run/secrets, lidos pelo configtree do Spring
+# como as propriedades DB_PASSWORD, RABBITMQ_USERNAME, RABBITMQ_PASSWORD e
+# WHAPI_TOKEN que o application.properties do microsserviço usa (R6).
 version: "3.8"
 
 services:
   messaging:
     image: ${IMAGE_MESSAGING}
+    environment:
+      DB_URL: "jdbc:mysql://${DB_ENDPOINT}:3306/${MESSAGING_DB_NAME}?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC"
+      DB_USERNAME: ${MESSAGING_DB_USER}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+      SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"
+    secrets:
+      - source: tnf_messaging_db_password
+        target: DB_PASSWORD
+      - source: tnf_rabbitmq_user
+        target: RABBITMQ_USERNAME
+      - source: tnf_rabbitmq_password
+        target: RABBITMQ_PASSWORD
+      - source: tnf_whapi_token
+        target: WHAPI_TOKEN
     networks:
       tnf-net:
         aliases:
           - messaging
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:${MESSAGING_PORT}/health || curl -fsS -o /dev/null http://127.0.0.1:${MESSAGING_PORT}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
     stop_grace_period: 30s
     deploy:
       replicas: ${REPLICAS_MESSAGING}
@@ -25,10 +51,29 @@ services:
         parallelism: 1
         order: stop-first
         failure_action: rollback
+        monitor: 60s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
       restart_policy:
         condition: any
         delay: 5s
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 384M
 
 networks:
   tnf-net:
+    external: true
+
+secrets:
+  tnf_messaging_db_password:
+    external: true
+  tnf_rabbitmq_user:
+    external: true
+  tnf_rabbitmq_password:
+    external: true
+  tnf_whapi_token:
     external: true

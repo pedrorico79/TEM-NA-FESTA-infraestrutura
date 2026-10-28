@@ -138,12 +138,6 @@ doctor() {
   [[ "$output" == *"Saída: 0 tudo certo; 2 há pendências."* ]]
 }
 
-@test "comando ainda não implementado termina com código 2 e diz a etapa" {
-  run "$INFRA" init-secrets
-  [ "$status" -eq 2 ]
-  [[ "$output" == *"chega na etapa E8"* ]]
-}
-
 @test "comando desconhecido termina com código 2" {
   run "$INFRA" deploy
   [ "$status" -eq 2 ]

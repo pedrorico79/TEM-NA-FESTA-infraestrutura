@@ -404,6 +404,13 @@ main() {
   local db
   db="$("$DB_INIT" "$WORK/stack.env" "$MANIFEST_HASH" 2>>"$LOG")" ||
     db="failed o db-init terminou com erro inesperado; veja /var/log/tnf-db-init.log no líder"
+  # Com a mensageria ligada, o schema do microsserviço também (E8), depois do
+  # do backend; o pior dos dois resultados vale.
+  if [[ "${db%% *}" == ok ]] && (($(envval REPLICAS_MESSAGING "$WORK/stack.env") > 0)); then
+    db="$("$DB_INIT" "$WORK/stack.env" "$MANIFEST_HASH" messaging 2>>"$LOG")" ||
+      db="failed o db-init do microsserviço terminou com erro inesperado; veja /var/log/tnf-db-init.log no líder"
+    [[ "${db%% *}" == ok ]] || db="${db%% *} microsserviço: ${db#* }"
+  fi
   DB_STATE="${db%% *}"
   DB_MSG="${db#* }"
   [[ "$DB_STATE" == ok ]] && DB_MSG=""

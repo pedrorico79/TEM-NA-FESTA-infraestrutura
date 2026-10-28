@@ -47,7 +47,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q5 | E4b | manual: no laboratório, terraform destroy direto criou tem-na-festa-dev-final-<id do ciclo> e removeu os parâmetros SSM de /tnf (25/10/2026) | verificado |
 | Q6 | E9 | manual: no laboratório, conferência descrita em 05, Q6 | pendente |
 | Q7 | E4b | manual: no laboratório, tabelas criadas pelo script da tag fixada (20/10/2026); primeiro admin criado pelo procedimento do README e preservado no ciclo infra down e infra up (25/10/2026); a aplicação iniciada fica para a E6 | verificado |
-| Q8 | E8 | bats: tests/shell/secrets-env.bats (Q8) e manual: no laboratório, infra up com e sem secrets.env | pendente |
+| Q8 | E8 | tests/shell/infra-env.bats (Q8) e manual: no laboratório, infra up com e sem secrets.env | pendente |
 | Q9 | E2 | manual: no laboratório, inspecionar os buckets de state e bronze no console (12/10/2026: acesso público bloqueado, SSE-S3, só TLS e versionamento no state) | verificado |
 | Q10 | E6 | manual: no laboratório, conferência descrita em 05, Q10 | pendente |
 | Q11 | E4b | manual: no laboratório, mysql.user e SHOW GRANTS do tnf_app: só os 8 privilégios em tem_na_festa.*, sem DROP nem GRANT OPTION (20/10/2026) | verificado |
@@ -62,7 +62,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | Q20 | E4b | bats: tests/shell/snapshots.bats (G23, a poda do down mantém 3 de cada tipo e não toca nos de outro ambiente); os 4 ciclos reais no laboratório foram dispensados pelo custo (25/10/2026) | verificado |
 | Q21 | E4b | manual: no laboratório, com o ambiente no ar e um manual mais novo, infra up não mexeu no RDS e a linha posterior continuou lá; --snapshot recusado com mensagem; plan direto com db_snapshot_identifier não recria o RDS (25/10/2026) | verificado |
 | Q22 | E6 | manual: no laboratório, conferência descrita em 05, Q22 (12/10/2026, E4a: (a) IMDSv2 obrigatório e limite 1 conferidos nas 3 instâncias; (b) dispensado pelo autor; (c) fica para a E6) | pendente |
-| Q23 | E8 | manual: no laboratório, conferência descrita em 05, Q23 | pendente |
+| Q23 | E8 | manual: no laboratório, conferência descrita em 05, Q23 | não aplicável nesta entrega: sem sessão do WhatsApp; o único segredo do microsserviço é o token, tratado como os demais (05, A8) |
 | Q24 | E4b | bats: tests/shell/db-init.bats (Q24 e banco vazio com db_schema_* em branco) e manual: no laboratório, tag descartável que falha no meio, marcador started e correção sem recriar o ambiente (20/10/2026: (a), (b) e (c)); (d) conferido só pelo bats, porque ao vivo exigiria apagar todos os snapshots do dev e mais três ciclos do RDS (25/10/2026) | verificado |
 | R1 | E6 | manual: no laboratório, conferência descrita em 06, R1 | pendente |
 | R2 | E6 | manual: no laboratório, conferência descrita em 06, R2 | pendente |
@@ -80,7 +80,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | R14 | E8 | manual: no laboratório, conferência descrita em 06, R14 | pendente |
 | R15 | E6 | tests/contract/T17.tftest.hcl (mesmo verificador de T17) | verificado |
 | R16 | E6 | manual: no laboratório, conferência descrita em 06, R16 | pendente |
-| R17 | E8 | manual: no laboratório, conferência descrita em 06, R17 | pendente |
+| R17 | E8 | manual: no laboratório, conferência descrita em 06, R17 | não aplicável nesta entrega: o microsserviço usa a Whapi com token, sem sessão do WhatsApp em disco (06, 6.4.1, caso B) |
 | C1 | E5 | manual: no GitHub Actions, conferência descrita em 07, C1 (26/10/2026: deploy dev do backend a partir da branch ci/deploy-dockerhub; tnf-backend:dev e :sha-e1f6dc9 com o mesmo digest, label tnf.branch = ci/deploy-dockerhub e revision do commit, conferidos no registro) | verificado |
 | C2 | E7 | manual: no laboratório, infra status depois do deploy do C1 | pendente |
 | C3 | E5 | manual: no GitHub Actions, conferência descrita em 07, C3 (26/10/2026: novo deploy dev do backend sem mudança: imagem reaproveitada, nada construído, mesmo digest) | verificado |

@@ -499,6 +499,8 @@ cmd_env() {
     confirm_env "$op" "$env" "$yes"
   fi
 
+  load_manual_secrets "$env" "$op"
+
   echo "== terraform init ($env)"
   tf_env_init "$env"
   local tf_args=(-input=false -var-file="$INFRA_ROOT/envs/$env/terraform.tfvars")
@@ -652,6 +654,88 @@ cmd_ssh() {
 
 # --- comandos das próximas etapas ---------------------------------------------
 
+# --- segredos manuais (05, A5) -------------------------------------------------------
+
+SECRETS_FILE="$INFRA_ROOT/secrets.env"
+MANUAL_SECRET_KEYS="whapi_token" # chaves de messaging_secrets (E8): o token da API da Whapi
+
+# messaging_on <env>: 0 quando o terraform.tfvars liga a mensageria
+# (service_replicas.messaging > 0); só assim há segredo manual (03, seção 3.4).
+messaging_on() {
+  local n
+  n="$(awk '/service_replicas/,/}/' "$INFRA_ROOT/envs/$1/terraform.tfvars" |
+    sed -n -E 's/^[[:space:]]*messaging[[:space:]]*=[[:space:]]*([0-9]+).*/\1/p' | head -n 1)"
+  ((${n:-0} > 0))
+}
+
+# secret_value <chave>: valor da chave no secrets.env (formato chave=valor).
+secret_value() {
+  sed -n "s/^$1=//p" "$SECRETS_FILE" 2>/dev/null | tail -n 1
+}
+
+# load_manual_secrets <env> <op>: com a mensageria ligada, entrega os segredos
+# do secrets.env ao Terraform por TF_VAR_messaging_secrets, nunca por linha de
+# comando (05, A5). Falta de arquivo ou de chave aborta antes do plan ou do
+# apply (Q8). No down, sem o arquivo, segue com um marcador: o destroy não usa
+# o valor.
+load_manual_secrets() {
+  local env="$1" op="$2" key value json='{}' missing=""
+  messaging_on "$env" || return 0
+  if [[ ! -f "$SECRETS_FILE" ]]; then
+    if [[ "$op" == down ]]; then
+      export TF_VAR_messaging_secrets='{"whapi_token":"sem-secrets-env"}'
+      return 0
+    fi
+    die "$EXIT_PRECONDITION" "a mensageria está ligada em envs/$env/terraform.tfvars e não há secrets.env. Crie-o com 'infra init-secrets' (05, A5); nada foi aplicado."
+  fi
+  for key in $MANUAL_SECRET_KEYS; do
+    value="$(secret_value "$key")"
+    if [[ -z "$value" ]]; then
+      missing="$missing $key"
+      continue
+    fi
+    json="$(jq -c --arg k "$key" --arg v "$value" '.[$k] = $v' <<<"$json")"
+  done
+  if [[ -n "$missing" ]]; then
+    die "$EXIT_PRECONDITION" "falta(m) no secrets.env:$missing. Rode 'infra init-secrets' para preencher; nada foi aplicado."
+  fi
+  export TF_VAR_messaging_secrets="$json"
+}
+
+usage_init_secrets() {
+  cat <<'EOF'
+Uso: infra init-secrets
+
+Cria (ou refaz) o secrets.env na raiz do repositório, com permissão 600 e
+fora do Git, perguntando cada segredo manual sem mostrar o que é digitado.
+Hoje o único é whapi_token, o token da API da Whapi usado pelo microsserviço
+de mensageria. Só é necessário com a mensageria ligada (05, A5).
+EOF
+}
+
+cmd_init_secrets() {
+  case "${1:-}" in -h | --help) usage_init_secrets; return 0 ;; esac
+  local key value content=""
+  if [[ -f "$SECRETS_FILE" ]] && ! confirm "Já existe um secrets.env. Substituir?"; then
+    say_info "nada foi alterado."
+    return 0
+  fi
+  for key in $MANUAL_SECRET_KEYS; do
+    read -r -s -p "$key: " value
+    echo
+    if [[ -z "$value" || "$value" =~ [[:space:]] ]]; then
+      die "$EXIT_PRECONDITION" "$key não pode ser vazio nem ter espaços; nada foi gravado."
+    fi
+    content+="$key=$value"$'\n'
+  done
+  (
+    umask 077
+    printf '%s' "$content" >"$SECRETS_FILE"
+  )
+  chmod 600 "$SECRETS_FILE"
+  say_ok "secrets.env gravado com permissão 600 (fora do Git)."
+}
+
 not_yet() {
   die "$EXIT_PRECONDITION" "o comando '$1' ainda não está implementado; ele chega na etapa $2 do plano (specs/09-plano-de-implementacao.md)."
 }
@@ -670,7 +754,7 @@ main() {
     ssh) cmd_ssh "$@" ;;
     snapshot) cmd_snapshot create "$@" ;;
     snapshots) cmd_snapshot list "$@" ;;
-    init-secrets) not_yet "$cmd" E8 ;;
+    init-secrets) cmd_init_secrets "$@" ;;
     *) die "$EXIT_PRECONDITION" "comando desconhecido: '$cmd'. Veja 'infra --help'." ;;
   esac
 }

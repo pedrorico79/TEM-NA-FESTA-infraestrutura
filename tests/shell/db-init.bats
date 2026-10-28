@@ -103,7 +103,7 @@ marker() { jq -r ".$1" "$MARKER_FILE"; }
   export SCRIPT_FAIL=1
   db_init
   [ "$status" -eq 0 ]
-  [[ "$output" == "failed o script do schema (v1.0.0) falhou:"*"erro de sintaxe"*"O schema foi limpo"* ]]
+  [[ "$output" == "failed o script do schema tem_na_festa (v1.0.0) falhou:"*"erro de sintaxe"*"O schema foi limpo"* ]]
   [ "$(cat "$TABLES")" = 0 ]
   [ "$(marker schema)" = failed ]
   [ "$(marker attempts)" = 1 ]
@@ -135,7 +135,7 @@ marker() { jq -r ".$1" "$MARKER_FILE"; }
 @test "Q13: download que falha grava failed apontando a referência, sem tabelas" {
   export DOWNLOAD_FAIL=1
   db_init
-  [[ "$output" == "failed não foi possível baixar o script do schema"*"db_schema_ref (v1.0.0)"* ]]
+  [[ "$output" == "failed não foi possível baixar o script do schema"*"db_schema_* (referência v1.0.0)"* ]]
   [ "$(marker schema)" = failed ]
   [ "$(cat "$TABLES")" = 0 ]
 }
@@ -161,7 +161,40 @@ marker() { jq -r ".$1" "$MARKER_FILE"; }
 @test "banco vazio com db_schema_* em branco: failed pedindo para preenchê-las" {
   sed -i 's/^DB_SCHEMA_REF=.*/DB_SCHEMA_REF=/' "$W/stack.env"
   db_init
-  [[ "$output" == "failed o banco está vazio e db_schema_* estão em branco; preencha-as em envs/dev/terraform.tfvars"* ]]
+  [[ "$output" == "failed o schema tem_na_festa está vazio e db_schema_* estão em branco; preencha-as em envs/dev/terraform.tfvars"* ]]
+}
+
+# --- perfil do microsserviço (E8): segundo schema no mesmo RDS -------------------------
+
+messaging_env() {
+  cat >>"$W/stack.env" <<'EOF'
+MESSAGING_DB_NAME=temnafesta_notificacao
+MESSAGING_DB_USER=tnf_notificacao
+MESSAGING_DB_SCHEMA_REPO_URL=https://github.com/exemplo/microsservico
+MESSAGING_DB_SCHEMA_REF=v1.0.0
+MESSAGING_DB_SCHEMA_PATH=db/V1.sql
+EOF
+}
+
+@test "perfil messaging: cria o schema, aplica o script do microsserviço e dá só SELECT, INSERT, UPDATE e DELETE ao tnf_notificacao" {
+  messaging_env
+  run "$DB_INIT" "$W/stack.env" hash-1 messaging
+  [ "$status" -eq 0 ]
+  [ "$output" = ok ]
+  grep -q 'curl .*https://raw.githubusercontent.com/exemplo/microsservico/v1.0.0/db/V1.sql' "$CALLS"
+  grep -q 'CREATE DATABASE IF NOT EXISTS `temnafesta_notificacao`' "$CALLS"
+  grep -q "GRANT SELECT, INSERT, UPDATE, DELETE ON \`temnafesta_notificacao\`.\* TO 'tnf_notificacao'@'%'" "$CALLS"
+  grep -q 'ssm get-parameter .*secrets/messaging_db_password' "$CALLS"
+  grep -q 's3 cp - s3://artefatos/status/db-init-messaging.json' "$CALLS"
+  run grep -q "GRANT .*tem_na_festa" "$CALLS"
+  [ "$status" -ne 0 ]
+}
+
+@test "perfil messaging com messaging_db_schema_* em branco: failed nomeando as variáveis do microsserviço" {
+  messaging_env
+  sed -i 's/^MESSAGING_DB_SCHEMA_REF=.*/MESSAGING_DB_SCHEMA_REF=/' "$W/stack.env"
+  run "$DB_INIT" "$W/stack.env" hash-1 messaging
+  [[ "$output" == "failed o schema temnafesta_notificacao está vazio e messaging_db_schema_* estão em branco"* ]]
 }
 
 @test "sem DB_ENDPOINT ainda: aguarda" {

@@ -1,7 +1,7 @@
 # 06 – Stacks do Swarm (compose files)
 
 Estado: **aprovado** (09/10/2026); ajustado em 10/10/2026 (frontend em `stop-first`, auditoria item 1; mensageria desligada com `REPLICAS_MESSAGING=0`, auditoria item 3; `stack.env` com `EXPECTED_NODES` e `MANAGER_COUNT`, auditoria item 11; mensageria com no máximo 1 réplica e `max_replicas_per_node: 1`, auditoria item 13; verificação de saúde com `wget` e `curl` de reserva, `VITE_*` vindos de variáveis do repositório, auditoria item 14; mensageria fixada no `app-1` por rótulo e regra do pareamento do WhatsApp com sessão, seção 6.4.1, E15 e R17, auditoria item 19) e em 11/10/2026 (`stack.env` com `DB_SCHEMA_REPO_URL`, `DB_SCHEMA_REF` e `DB_SCHEMA_PATH`, para o `db-init` do líder baixar o script do schema, seção 4 e E12, auditoria item 22). O microsserviço de mensageria está **PENDENTE** (aguarda a configuração dele): aqui ele aparece só como esqueleto, fica **desligado até a E8**, e tudo o que depende dele está marcado.
-Ajustado em 26/10/2026, na E6: o backend publica os eventos de pedido no RabbitMQ (E9 revista), verificação de saúde do backend em `/api/v1/health`, RabbitMQ 4.1.4 e `definitions.json` adiado para a E8.
+Ajustado em 28/10/2026, na E8: configuração do microsserviço recebida (seções 6.4, 6.4.1, 6.5 e pendências). Ajustado em 26/10/2026, na E6: o backend publica os eventos de pedido no RabbitMQ (E9 revista), verificação de saúde do backend em `/api/v1/health`, RabbitMQ 4.1.4 e `definitions.json` adiado para a E8.
 Depende de: 02 (serviços e posicionamento), 03 (`service_replicas`, `image_tags`), 04 (convergência), 05 (segredos), 07 (CI/CD e imagens).
 
 ## 1. Escopo
@@ -119,22 +119,23 @@ Cada segredo tem três nomes ao longo do caminho:
 - O nome do *config* leva o hash do conteúdo (por exemplo `rabbitmq_definitions_<hash>`), porque o Docker não permite alterar um *config* existente; mudou o arquivo, muda o nome e o serviço é atualizado.
 - Painel de gerenciamento (interface web): fora do escopo agora; entra junto com a observabilidade.
 
-### 6.4 `messaging` (microsserviço de WhatsApp) — **PENDENTE**, desligado até a E8
-Esqueleto, sem valores; fica em `stacks/app-messaging.yml` (seção 2):
+### 6.4 `messaging` (microsserviço de notificações)
+Configurado na E8 (28/10/2026), em `stacks/app-messaging.yml` (seção 2). O microsserviço (`TEM-NA-FESTA-microservice`) consome a fila `queue_pedido` do RabbitMQ (troca `exchange_pedido`, chave `routing_key_pedido`, as mesmas do backend), monta o texto com os modelos guardados no seu próprio schema e envia pela API da Whapi, autenticado por token:
 | Item | Valor |
 |---|---|
 | Imagem | `${IMAGE_MESSAGING}` |
 | Posicionamento | `node.labels.tier == app` **e** `node.labels.messaging == true` (*Decidido* em 10/10/2026, item 19): o rótulo `messaging=true` fica sempre no nó `app-1`, o mesmo do RabbitMQ (04, seção 7, passo 2), e **`max_replicas_per_node: 1`** |
-| Rede | `tnf-net` com o apelido `messaging`; sai para o WhatsApp pela NAT; **recebe os eventos do backend** na porta `${MESSAGING_PORT}` (sem publicação no host) |
-| Réplicas | `${REPLICAS_MESSAGING}`: `0` = desligado (padrão até a E8); `1` na E8. **No máximo 1** (*Decidido* em 10/10/2026, 03 seção 3.4, T17): ainda não se sabe se mais de uma réplica é segura, pois um consumidor de WhatsApp com sessão pode duplicar envios; o `plan` recusa valores maiores. O limite de 1 por nó fica no compose só como ajuste de desenho, caso o valor seja liberado depois |
-| Volume | `messaging_session`: volume local nomeado no `app-1`, **só se o microsserviço guarda a sessão do WhatsApp em disco** (6.4.1). Caminho de montagem **PENDENTE** (vem da configuração do microsserviço) |
-| Segredos e variáveis | RabbitMQ (usuário e senha), `messaging_api_key` (se adotado), as chaves de `messaging_secrets` e as variáveis de conexão: **PENDENTE** |
-| Saúde, memória | **PENDENTE** (a verificação seguirá o formato de 6.1 e 6.2 se a imagem tiver `wget` ou `curl`). A memória é medida na E8 junto com o RabbitMQ e o backend no mesmo nó (seção 8) |
-| Atualização | `stop-first` (*Decidido* para o caso com sessão: duas instâncias com a mesma sessão do WhatsApp ao mesmo tempo disputariam o login) e `stop_grace_period` de 30 s para o serviço gravar a sessão ao parar (valor a confirmar na E8) |
+| Rede | `tnf-net` com o apelido `messaging`; sai para a Whapi pela NAT; escuta na porta `${MESSAGING_PORT}` (8081), só para a verificação de saúde, sem publicação no host |
+| Réplicas | `${REPLICAS_MESSAGING}`: `1` desde a E8 (dev e prod); `0` desliga. **No máximo 1** (03, seção 3.4, T17): o serviço não evita envio duplicado entre réplicas concorrentes |
+| Volume | nenhum: o token não é sessão em disco (6.4.1, caso B) |
+| Segredos e variáveis | `DB_URL` (schema `${MESSAGING_DB_NAME}` no mesmo RDS), `DB_USERNAME` (`tnf_notificacao`), `RABBITMQ_HOST=rabbitmq`, `RABBITMQ_PORT=5672`, `SPRING_CONFIG_IMPORT=optional:configtree:/run/secrets/`; segredos `messaging_db_password` (como `DB_PASSWORD`), `rabbitmq_user` e `rabbitmq_password` (como `RABBITMQ_USERNAME` e `RABBITMQ_PASSWORD`) e `whapi_token` (como `WHAPI_TOKEN`, vindo de `messaging_secrets`, 05 A5) |
+| Saúde, memória | `GET /health` na porta 8081 (acrescentado ao microsserviço na E8), no formato de 6.1 e 6.2, período de partida 90 s; limite de 512 MB com reserva de 384 MB |
+| Atualização | `stop-first`, rollback automático e `stop_grace_period` de 30 s, para terminar a mensagem em processamento |
 - **Por que o rótulo `messaging=true` existe sempre (*Decidido*):** o rótulo é aplicado pelo líder mesmo com a mensageria desligada (custo nenhum). Com ele, o serviço sempre volta ao mesmo nó e, se houver sessão em volume local, o volume está lá. Sem ele, o Swarm poderia reagendar o serviço em outro nó app e a sessão ficaria para trás. O rótulo reaproveita o padrão do RabbitMQ (nó fixo e volume local, P1 em 02).
-- **Trade-off aceito:** no `app-1` passam a conviver o RabbitMQ, uma réplica do backend e o microsserviço (seção 8). Se faltar memória, a saída é `app_instance_type = t3.medium`, como já previsto.
+- **Trade-off aceito:** no `app-1` passam a conviver o RabbitMQ, uma réplica do backend e o microsserviço (seção 8). No dev, o nó app passou a `t3.medium` na E8 (*Decidido* pelo autor em 28/10/2026); no prod, a memória do `app-1` é medida na sessão da E8.
 
 #### 6.4.1 Sessão e pareamento do WhatsApp (*Decidido* em 10/10/2026, auditoria item 19)
+**Situação na E8 (28/10/2026): caso B.** O microsserviço usa a Whapi com token, sem sessão em disco: não há pareamento, QR code nem volume. R17 e Q23 ficam como não aplicáveis nesta entrega, e o restante desta seção só vale se a forma de autenticação mudar.
 **O problema.** O "nível 4" (01, RF-02) promete um ambiente que sobe sem intervenção. Um microsserviço de WhatsApp que usa uma biblioteca com sessão (por exemplo `whatsapp-web.js` ou Baileys) exige que alguém **pareie** o aparelho uma vez: escanear um QR code (ou digitar um código de pareamento) com o celular. Depois do pareamento, a sessão fica em arquivos no disco. Se o microsserviço usa a API oficial da Meta (token), não há pareamento. Qual dos dois é o caso depende da configuração do microsserviço (**PENDENTE**); a regra abaixo cobre os dois.
 
 **Regra geral.** O nível 4 vale **até o serviço estar de pé**. O pareamento do WhatsApp, quando existe, é uma **exceção declarada**: um passo manual, único por ambiente novo, documentado no README (E8, 09) e **não automatizado**. O `converge.json` e o `infra status` **não sabem** se o WhatsApp está pareado: `ready` significa que as réplicas estão de pé, não que há mensagens saindo.
@@ -171,7 +172,8 @@ Esqueleto, sem valores; fica em `stacks/app-messaging.yml` (seção 2):
 
 **Verificação:** R17 (09, E8) e Q23 (05).
 
-### 6.5 Contrato de integração backend → microsserviço (*Decidido*; porta e detalhes do microsserviço pendentes)
+### 6.5 Contrato de integração backend → microsserviço
+**Situação na E8 (28/10/2026):** os eventos de pedido vão pelo RabbitMQ (E9), não por HTTP. O backend continua recebendo `MESSAGING_URL` e `MESSAGING_API_KEY`, sem uso; a tabela abaixo fica como registro do desenho anterior.
 Como o backend ainda não envia eventos, o que a infra garante desde já é o seguinte; o desenvolvimento dos dois lados deve seguir isso (ou propor outra coisa, que muda este item):
 | Aspecto | Contrato |
 |---|---|
@@ -249,7 +251,7 @@ Como o backend ainda não envia eventos, o que a infra garante desde já é o se
 | E15 | WhatsApp com sessão (auditoria item 19, opção A): o nível 4 vale até o serviço estar de pé e o pareamento é uma exceção manual declarada, uma vez por ambiente novo; a `messaging` fica sempre no `app-1` por rótulo `messaging=true` (aplicado mesmo com ela desligada); se o microsserviço guarda a sessão em disco, usa o volume local `messaging_session`, sem cópia em SSM, S3 ou state; `stop-first` com `stop_grace_period`; procedimento de pareamento pelos logs via `infra ssh`; número de teste recomendado no dev; sessão no S3 descartada; R17 e Q23. Vale só se o microsserviço usar sessão; com a API oficial (token), nada disso se aplica | **Decidido** (10/10/2026); detalhes (caminho do volume, texto do log, forma do pareamento) dependem da configuração do microsserviço |
 
 ## 12. Pendências
-- **Configuração do microsserviço de mensageria (PENDENTE):** imagem, porta que recebe os eventos, variáveis, segredos, verificação de saúde, memória, se aceita mais de uma réplica (o que permitiria rever E13), a lista de filas do RabbitMQ e se ele valida a `MESSAGING_API_KEY`. Pelo item 19, também: **como ele se autentica no WhatsApp** (biblioteca com sessão e QR code ou código de pareamento, API oficial com token, ou outra forma), **em que caminho grava a sessão** (para o volume `messaging_session`), qual o texto do log de "conectado", o que faz com eventos recebidos antes do pareamento e **quais números de WhatsApp** serão usados em dev e em prod. Só bloqueia a E8.
+- ~~Configuração do microsserviço de mensageria~~: recebida em 28/10/2026 (6.4). Segue em aberto só se mais de uma réplica é segura (E13).
 - ~~Caminho do endpoint de saúde do backend~~: resolvido em 26/10/2026, `/api/v1/health` (6.2).
 - **Imagem do frontend baseada na oficial do nginx** (logs em stdout, 6.1).
 - Itens da auditoria de 10/10/2026 que ainda alteram este documento (ver 00): nenhum pendente (o item 19 foi resolvido em 6.4, 6.4.1 e E15, e o item 22, em 11/10/2026, só ampliou o `stack.env` na seção 4 e em E12).

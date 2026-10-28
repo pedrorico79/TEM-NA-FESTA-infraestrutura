@@ -39,9 +39,11 @@ ENVS="$BATS_TEST_DIRNAME/../../envs"
   done
 }
 
-@test "03, seção 3.4: a mensageria está desligada nos dois ambientes até a E8" {
+@test "03, seção 3.4: a mensageria está ligada nos dois ambientes desde a E8, com porta e banco" {
   local e
   for e in dev prod; do
-    grep -Eq '^ *messaging *= *0$' "$ENVS/$e/terraform.tfvars"
+    grep -Eq "^ *messaging *= *1$" "$ENVS/$e/terraform.tfvars"
+    grep -Eq "^messaging_port *= *8081$" "$ENVS/$e/terraform.tfvars"
+    grep -Eq '^messaging_db_schema_ref *= *"v1.0.0"$' "$ENVS/$e/terraform.tfvars"
   done
 }

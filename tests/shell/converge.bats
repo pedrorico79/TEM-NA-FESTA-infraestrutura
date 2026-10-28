@@ -117,7 +117,8 @@ fi
 EOF
 
   stub db-init <<'EOF'
-echo "${DB_RESULT:-ok}"
+echo "db-init $*" >>"$CALLS"
+if [[ "${3:-}" == messaging ]]; then echo "${DB_RESULT_MESSAGING:-ok}"; else echo "${DB_RESULT:-ok}"; fi
 EOF
 }
 
@@ -309,4 +310,23 @@ bad_backend_rolled_back() {
   converge
   [ "$(state)" = waiting ]
   [ ! -f "$W/s3/deploy-failed.json" ]
+}
+
+# --- E8: banco do microsserviço ------------------------------------------------------
+
+@test "mensageria desligada: só o db-init do backend roda" {
+  converge
+  grep -q "^db-init .*stack.env h1$" "$CALLS"
+  run grep -q "db-init .* messaging" "$CALLS"
+  [ "$status" -ne 0 ]
+}
+
+@test "mensageria ligada: o db-init do microsserviço roda depois do backend, e a falha dele bloqueia o deploy" {
+  sed -i "s/^REPLICAS_MESSAGING=0/REPLICAS_MESSAGING=1/" "$W/s3/stack.env"
+  export DB_RESULT_MESSAGING="failed o script do schema temnafesta_notificacao (v1.0.0) falhou"
+  converge
+  grep -q "db-init .*stack.env h1 messaging" "$CALLS"
+  [ ! -f "$W/deploys" ]
+  [ "$(state)" = degraded ]
+  [[ "$(jq -r .message "$W/converge.json")" == "banco: microsserviço: o script do schema temnafesta_notificacao"* ]]
 }

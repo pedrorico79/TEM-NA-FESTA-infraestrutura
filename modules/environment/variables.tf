@@ -435,6 +435,72 @@ variable "db_schema_path" {
   }
 }
 
+# Banco do microsserviço de mensageria (E8): segundo schema no mesmo RDS, com
+# o script do repositório do microsserviço fixado por tag (05, B5).
+
+variable "messaging_db_name" {
+  description = "Schema do microsserviço de mensageria no mesmo RDS. Precisa ser o mesmo que o script do schema cria."
+  type        = string
+  default     = "temnafesta_notificacao"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_]{0,63}$", var.messaging_db_name))
+    error_message = "messaging_db_name deve ter só letras minúsculas, dígitos e _, começando por letra (até 64 caracteres)."
+  }
+}
+
+variable "messaging_db_schema_repo_url" {
+  description = "URL do repositório público com o script SQL do banco do microsserviço. Exigida com a mensageria ligada."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || var.messaging_db_schema_repo_url != ""
+    error_message = "Com service_replicas.messaging = 1, preencha messaging_db_schema_repo_url em envs/${var.env}/terraform.tfvars (o repositório do microsserviço)."
+  }
+
+  validation {
+    condition     = var.messaging_db_schema_repo_url == "" || can(regex("^https://[^\\s]+$", var.messaging_db_schema_repo_url))
+    error_message = "messaging_db_schema_repo_url deve ser uma URL https:// do repositório público do microsserviço."
+  }
+}
+
+variable "messaging_db_schema_ref" {
+  description = "Tag ou commit do script do banco do microsserviço; nomes de branch são recusados. Exigida com a mensageria ligada."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || var.messaging_db_schema_ref != ""
+    error_message = "Com service_replicas.messaging = 1, preencha messaging_db_schema_ref em envs/${var.env}/terraform.tfvars (uma tag do repositório do microsserviço)."
+  }
+
+  validation {
+    condition     = !contains(["main", "master", "develop", "head"], lower(var.messaging_db_schema_ref))
+    error_message = "messaging_db_schema_ref = \"${var.messaging_db_schema_ref}\" é uma branch: informe uma tag ou um commit."
+  }
+}
+
+variable "messaging_db_schema_path" {
+  description = "Caminho do script SQL dentro do repositório do microsserviço. Exigida com a mensageria ligada."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || var.messaging_db_schema_path != ""
+    error_message = "Com service_replicas.messaging = 1, preencha messaging_db_schema_path em envs/${var.env}/terraform.tfvars (caminho do script SQL no repositório do microsserviço)."
+  }
+
+  validation {
+    condition     = var.messaging_db_schema_path == "" || can(regex("^[^/\\s][^\\s]*$", var.messaging_db_schema_path))
+    error_message = "messaging_db_schema_path deve ser um caminho relativo dentro do repositório, sem espaços e sem / no começo."
+  }
+}
+
 # --- 3.6 Acesso e dados compartilhados -------------------------------------------
 
 variable "admin_ssh_cidrs" {
@@ -491,9 +557,14 @@ variable "bronze_bucket_region" {
 # --- 3.7 Segredos manuais --------------------------------------------------------
 
 variable "messaging_secrets" {
-  description = "Segredos manuais do microsserviço (vindos do secrets.env). Chaves PENDENTES; só exigidos com a mensageria ligada."
+  description = "Segredos manuais do microsserviço (vindos do secrets.env pelo infra). Hoje só whapi_token, o token da API da Whapi; exigido só com a mensageria ligada."
   type        = map(string)
   default     = {}
   nullable    = false
   sensitive   = true
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || try(nonsensitive(var.messaging_secrets["whapi_token"] != ""), false)
+    error_message = "Com service_replicas.messaging = 1, falta whapi_token no secrets.env (crie com 'infra init-secrets')."
+  }
 }
