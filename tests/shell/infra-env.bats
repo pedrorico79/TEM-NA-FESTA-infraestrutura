@@ -177,6 +177,17 @@ setup() {
   [[ "$output" == *"serviço messaging"*"off"*"desligado"* ]]
 }
 
+@test "S11: com um serviço failed_tag, infra up termina com código 3 na hora e o status destaca o que fazer" {
+  local b="$FIX/s3/tnf-dev-artifacts-000000000000-us-east-1"
+  local msg="backend: a etiqueta dev aponta para uma imagem que falhou (commit abc1234). Rodando: nenhuma réplica saudável. Ação: rode o deploy do backend com a branch corrigida ou com reuse_tag=sha-<anterior>."
+  jq -n --arg m "$msg" '{state: "degraded", message: $m, services: {backend: {state: "failed_tag", desired: 1, running: 0, image: "ns/tnf-backend:dev@sha256:ruim", message: $m}}}' >"$b/status/converge.json"
+  export TNF_WAIT_TIMEOUT=1500
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 3 ]
+  [[ "$output" == *">>> backend: a etiqueta dev aponta para uma imagem que falhou (commit abc1234)"* ]]
+  [[ "$output" == *"degradado"* ]]
+}
+
 @test "falha do apply termina com código 1 e mensagem" {
   export TF_APPLY_RC=1
   # o stub trata "apply" pelo código TF_APPLY_RC
