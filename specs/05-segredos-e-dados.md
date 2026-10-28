@@ -142,14 +142,14 @@ Tira um snapshot do RDS sem destruir nada (ponto de restauração antes de uma m
 
 - **Os buckets são criados pelo `infra bootstrap` com o AWS CLI, fora do Terraform** (*Decidido* em 12/10/2026, na E2). O laboratório (SCP do AWS Academy) nega `s3:GetBucketObjectLockConfiguration`, que o recurso `aws_s3_bucket` do provedor AWS sempre lê e não tolera negado; por isso o Terraform do `bootstrap` gerencia **só a configuração** da tabela acima (versionamento, criptografia, bloqueio de acesso público e política de TLS), com `prevent_destroy`, e nunca o bucket em si.
 - Nenhum dos dois é apagado por um `destroy` de ambiente, nem por um `destroy` do `bootstrap`: o Terraform não gerencia os buckets.
-- Silver e gold ficam para a fase do datalake.
+- Silver e gold como buckets próprios continuam fora. O bucket de resultados do Athena (`tnf-athena-<id-da-conta>-<região>`, expiração de 30 dias) pertence à camada `analytics` (*Proposto*, 10 seção 6.2).
 - **O bucket bronze pode já existir na conta** (por exemplo `bucket-bronze-827290239455-us-east-1`, criado antes deste Terraform numa conta anterior) (*Decidido* em 10/10/2026; ajustado em 12/10/2026). O `infra bootstrap` o **adota**: não o cria de novo e aplica a configuração da tabela acima. Regras:
   - Os objetos antigos **não são apagados nem movidos**. Os logs novos usam o layout de B4, sob `logs/env=<env>/`, e convivem com o conteúdo antigo.
   - O `plan` do `bootstrap` mostra o que o Terraform alteraria no bucket existente (criptografia, bloqueio de acesso público, política de TLS). Qualquer diferença inesperada, por exemplo política de bucket, regra de ciclo de vida ou notificação que o Terraform removeria, é mostrada e **exige a sua confirmação** antes do `apply`.
   - Se o bucket não existir (outra conta, outra região), o `infra bootstrap` o cria com o AWS CLI, com as etiquetas `Project`, `Env = shared` e `ManagedBy`. O mesmo vale para o bucket do state.
   - Verificado por G16 (08).
 
-### B4. Layout dos logs no bronze (preparado para o Glue/Athena futuros)
+### B4. Layout dos logs no bronze (preparado para o Glue/Athena)
 `logs/env=<env>/source=<docker|auth|systemd>/year=AAAA/month=MM/day=DD/<hostname>_<hhmmss>_<uuid>.json`
 - Formato JSON, uma entrada por linha, como no seu desenho atual.
 - Os campos `env`, `source` e a data viram partições, o que facilita o crawler do Glue e as consultas do Athena depois. A data das partições é em **UTC**.
@@ -160,6 +160,7 @@ Tira um snapshot do RDS sem destruir nada (ponto de restauração antes de uma m
   - `source=systemd`: apenas as unidades `docker`, `ssh`, `fluent-bit`, `cloud-init`, `cloud-config`, `cloud-final` e `tnf-converge`. Isso inclui a saída do `node-bootstrap.sh` e da convergência.
 - Todo registro tem os campos `env`, `host` e `role` (`web`, `app` ou `bastion`).
 - Como nunca se imprimem segredos nos scripts (A6), o bronze não os recebe (Q1); os logs da própria aplicação são responsabilidade dela.
+- *Proposto em 28/10/2026:* o dataset de tendências fica ao lado, sob `datasets/` (layout em 10, seção 5), e as tabelas do Glue sobre `logs/` usam estas partições com *partition projection* (10, seção 6.1). Os segredos manuais da coleta (`dataset_api_email` e `dataset_api_password`) seguem as regras de A5, exigidos só com `datasets_enabled = true` (10, seção 8).
 
 ### B5. Estrutura inicial do banco (tabelas e dados iniciais) (*Decidido*)
 **Script SQL:** fica em um **repositório separado e público** do GitHub (`TEM-NA-FESTA-database`). Depois da mudança decidida pelo autor, ele **cria só as tabelas**. O primeiro usuário administrador do sistema **não** vai no script, para que nem o hash da senha fique público: ele é criado à mão, uma vez por banco novo, pelo `tnf-db-shell` (A7), com o procedimento do README (*Decidido* em 20/10/2026, na E4b). Depois disso, ele vem nos snapshots. A criação do usuário SQL administrador foi **removida do script**: ela servia ao desenvolvimento e a permitir que o backend alterasse o banco, e esse papel passa a ser do usuário da aplicação com permissões de estrutura (A4). Para operação manual, o administrador do RDS continua disponível a quem acessar um nó app pelo bastion (A7).

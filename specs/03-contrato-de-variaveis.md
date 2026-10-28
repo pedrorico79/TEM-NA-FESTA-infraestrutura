@@ -96,6 +96,8 @@ Distribuição em rodízio: o nó de índice `i` (começando em 0) fica na AZ `i
 | `bronze_bucket_name` | string | `null` | se `null`, segue a convenção `bucket-bronze-<id-da-conta>-<bronze_bucket_region>` |
 | `bronze_bucket_region` | string | `us-east-1` | região do bucket bronze (pode diferir de `region`) |
 
+*Proposto em 28/10/2026:* as variáveis da coleta do dataset (`datasets_enabled`, `dataset_repo_url`, `dataset_ref`, `dataset_schedule`) estão em 10, seção 7, e entram nesta tabela na E10 (09).
+
 ### 3.7 Segredos manuais (sensíveis)
 | Variável | Tipo | Padrão | Observação |
 |---|---|---|---|

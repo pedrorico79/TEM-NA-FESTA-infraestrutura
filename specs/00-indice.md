@@ -26,6 +26,7 @@ Estes arquivos vivem hoje no Project "Tem Na Festa" e devem ser copiados para a 
 | 07 | CI/CD | **Aprovado** (faltam dados de entrada; F7 adiado; T1 a T17, serviço desligado, remoção dos workflows de ECR antigos e etiqueta apontando para imagem que falhou, F9, C13 e C14, ajustados em 10/10/2026; `Dockerfile` na raiz, `VITE_*` como variáveis do repositório do frontend e ferramenta de saúde nas imagens em 4.4, F10, C15 a C17; trava de prod por branch no workflow em 4.5, F11, C18 e C19, em 10/10/2026; verificação automática da rastreabilidade dos testes no CI, em 6 e F6, em 11/10/2026) |
 | 08 | Estrutura do repositório de infra e convenções | **Aprovado** (H1 a H18; G1 a G25; `lifecycle` da AMI e do RDS, `app-messaging.yml`, `init-secrets`, `tnf-db-shell.sh`, `infra ssh`, ponto de partida com conteúdo antigo, importação do bronze, aviso de sobras, `infra session` e recuperação de state em 5.3, recusa de mudança de `manager_count` em 5.4, comandos de snapshot em 5 e 5.5, CI verde como regra de conduta em 7 e 11, `metadata_options` fixo no módulo `compute` e scripts com IMDSv2 em 3, 4.1 e 4.3, `infra access` e `scripts/access.sh` em 2, 5 e 5.6, ajustados em 10/10/2026; `scripts/check-traceability.sh`, `make trace`, G7, G8, G10 e G15 e H18, rastreabilidade automática em 2, 7 e 8, em 11/10/2026; na varredura final, situação com três valores, IDs lidos só nas listas "Pronto quando", G10 (g) e (h), H19 e `DB_SCHEMA_*` no módulo `environment`) |
 | 09 | Plano de implementação e validação | **Aprovado** (E0 a E9; I1 a I10; E0, E1, E2, E3, E4a, E4b, E5, E6, E7, E8 e E9 ajustadas em 10/10/2026; G22 na E2 e na E4a, S13 e S14 na E6, Q19 a Q21 e G23 na E4b; R15 sai na E6 junto com T17 na E1; C15 a C19 na E5 e R16 na E6; valores das variáveis sem padrão exigidos a partir da E4a, E3 com raiz temporária; Q22 no host na E4a e no container na E6; `infra access`, G24 e G25 na E4a; rótulo `messaging=true` na E4a e pareamento do WhatsApp, R17 e Q23 na E8; em 11/10/2026, S7 na E1, G7 na E2, G8 na E3, S6 na E4a, Q12 na E7, G15 e G10 na E0, `--strict` na E9, e a regra de que todo ID de teste tem etapa e verificador, I10; também em 11/10/2026, `db-init` com limpeza e nova tentativa, Q24, Q11 e Q13 na E4b, tag descartável como pré-requisito, Q10 e Q12 confirmando que o backend dispensa o `DROP`, I11; na varredura final, R15 na E6, R13 na E7, P1, P2 e P4 na E0, P3 na E9, I12) |
+| 10 | Dados analíticos (Lambda, Glue e Athena) e dicionário de dados | **Proposto** (28/10/2026), aguarda as decisões DA1 a DA6; etapas E10 e E11 em 09 (I13); RF-13, RF-14 e critério 8 em 01 |
 
 ## Auditoria de 10/10/2026: correções concluídas em 11/10/2026
 O autor pediu uma auditoria dos specs contra toda a conversa. Foram achados 22 pontos; as correções foram tratadas em ordem de prioridade, uma decisão por vez, e cada uma atualizou os specs afetados. **Os 22 estão resolvidos.**
@@ -80,7 +81,10 @@ Depois da auditoria, uma última leitura de todas as specs, com conferência aut
 - **Opcionais, não bloqueiam:** ligar a aprovação por revisor em `prod` (*GitHub Environments*) e a *branch protection* com o `ci-infra` obrigatório, se o plano do GitHub permitir (07, 4.5; 08, seção 11).
 - **Limpeza da conta AWS (antes da E3):** remover à mão os recursos da infraestrutura antiga que o `infra doctor` listar (08, seção 5.2).
 
+- **Decisões do spec 10 (DA1 a DA6)**: qual script a Lambda roda, Lambda real ou script local com envio, usuário do sistema para a coleta, quem muda o repositório do dataset, camada `analytics` com as tabelas dos logs, e formato do dicionário de dados.
+
 **Descobertas a fazer no laboratório (plano B existe em cada uma)**
+- Se o Google Trends aceita as chamadas da Lambda (IPs da AWS) e se Lambda, EventBridge e Glue funcionam com a `LabRole`; resolvido no primeiro passo da E10 (10, D5); plano B: script local + `infra dataset upload`.
 - Limite de Elastic IPs (padrão da AWS: 5 por região); resolvido em E3 (09).
 - Se o RDS conta no limite de 9 instâncias, e se há Multi-AZ e criptografia disponíveis (02, seção 10; 05, B2); resolvido em E4b (09).
 - Se a AMI Ubuntu 24.04 traz o `/var/log/auth.log` (02, seção 7.1); resolvido em E4a (09); plano B: instalar o `rsyslog`.
@@ -89,7 +93,7 @@ Depois da auditoria, uma última leitura de todas as specs, com conferência aut
 - Se o `app-1` aguenta o RabbitMQ, uma réplica do backend e o microsserviço juntos (06, seção 8); medido na E8 (09); plano B: `app_instance_type = t3.medium`.
 
 **Adiado por decisão do autor (fora do escopo desta fase)**
-- Observabilidade (importante, será especificada depois), datalake além do bucket bronze, Terraform via GitHub Actions, HTTPS/domínio, autoscaling, EFS, valores de `VITE_*` diferentes por ambiente.
+- Observabilidade (importante, será especificada depois), silver e gold como buckets próprios (a coleta do dataset, o Glue e o Athena entraram no spec 10, proposto em 28/10/2026), Terraform via GitHub Actions, HTTPS/domínio, autoscaling, EFS, valores de `VITE_*` diferentes por ambiente.
 
 ## Decisões principais (resumo)
 - Terraform em 2 camadas: `bootstrap` (state e bronze, nunca destruído; os buckets são criados pelo `infra bootstrap` com o AWS CLI e o Terraform gerencia só a configuração, por causa da SCP do laboratório, 08 H20) e `envs/dev|prod` (efêmeros, finos, sobre `modules/environment`). State remoto no S3 com `use_lockfile`.
@@ -128,6 +132,7 @@ Depois da auditoria, uma última leitura de todas as specs, com conferência aut
 - `frontend`, `backend` e `microservice`: ter um `Dockerfile` na raiz cuja imagem traga `wget` ou `curl` (07, 4.4). No `frontend`, declarar um `ARG` para cada `VITE_*` e cadastrar os valores como **variáveis do repositório** (Settings → Secrets and variables → Actions → Variables), não como *secrets*.
 - Backend e microsserviço: implementar o envio e o recebimento de eventos conforme o contrato de 06, seção 6.5.
 - Microsserviço: informar como se autentica no WhatsApp, onde grava a sessão (se houver) e o que faz com eventos recebidos antes do pareamento (06, seção 6.4.1).
+- `TEM-NA-FESTA-dataset` (*proposto*, 10 seção 3): `handler` para a Lambda, saída em JSON Lines no formato longo, controle do prazo de 15 min, credenciais pelo SSM e uma tag para o `dataset_ref`, antes da E10.
 - Máquinas Windows do projeto: instalar o WSL 2 com Ubuntu e as ferramentas (08, seção 5.1).
 - Conta AWS: remover à mão os recursos da infraestrutura antiga antes da E3 (08, seção 5.2).
 - `terraform.tfvars` de dev e prod: preencher `dockerhub_namespace` e `db_schema_*` antes da E4a (03, seção 3.8).
