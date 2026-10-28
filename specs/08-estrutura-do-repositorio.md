@@ -63,7 +63,7 @@ TEM-NA-FESTA-infraestrutura/
 │   └── ci-infra.yml             # 07, seção 6 (único workflow do repositório)
 └── specs/                       # estes documentos (00 a 10)
 ```
-- *Proposto em 28/10/2026 (spec 10, E10 e E11):* a árvore ganha `analytics/` (camada persistente: Glue, Athena e `views/*.sql`), `modules/datasets/` (Lambda de coleta), `scripts/build-dataset-lambda.sh`, `scripts/check-dictionary.sh` e `docs/dicionario-de-dados.md`; o `infra` ganha `analytics plan|up`, `dataset run <env>`, `dataset seed` e `dataset upload <env> <arquivo>`; o `Makefile` ganha `make dict`; o `scripts/check-traceability.sh` passa a ler o spec 10 e a letra D.
+- *Decidido em 28/10/2026 (spec 10, E10 e E11):* a árvore ganha `analytics/` (camada persistente: Glue, Athena e `views/*.sql`), `modules/datasets/` (Lambda de coleta), `scripts/build-dataset-lambda.sh`, `scripts/check-dictionary.sh` e `docs/dicionario-de-dados.md`; o `infra` ganha `analytics plan|up`, `dataset run <env>`, `dataset seed` e `dataset upload <env> <arquivo>`; o `Makefile` ganha `make dict`; o `scripts/check-traceability.sh` passa a ler o spec 10 e a letra D.
 - **Esta é a árvore completa do repositório depois da E0** (seção 5.2): não sobra nenhum arquivo do conteúdo antigo fora dela.
 - **Por que `modules/environment`:** `envs/dev` e `envs/prod` têm quase só valores (`terraform.tfvars`) e a chamada ao mesmo módulo de composição. Assim a lógica existe **uma vez**, dev e prod nunca divergem por acidente, e a diferença entre ambientes é visível em um único arquivo.
 - **Por que `node/` separado de `modules/`:** são scripts que rodam nas instâncias, testados à parte (`shellcheck`, `bats`). O módulo `artifacts` só os envia ao S3.

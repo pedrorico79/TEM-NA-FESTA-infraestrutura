@@ -1,6 +1,6 @@
 # 10 – Dados analíticos (Lambda, Glue e Athena) e dicionário de dados
 
-Estado: **proposto** (28/10/2026); revisto no mesmo dia contra o documento da disciplina **"Especificação de Base de Dados"** (Análise de Dados, Grupo 03, versão 2.0 de 28/09/2026, daqui em diante **EBD**). Decisões do autor em 28/10/2026: DA2 (a), DA4 (tarefa aceita), DA5 (critério deixado a este spec). DA3 decidida depois da explicação. DA1 aguarda confirmação, porque a resposta (a) conflita com a EBD (seção 9). A EBD foi corrigida na versão 3.0 (seção 12).
+Estado: **decidido** (28/10/2026); revisto no mesmo dia contra o documento da disciplina **"Especificação de Base de Dados"** (Análise de Dados, Grupo 03, versão 2.0 de 28/09/2026, daqui em diante **EBD**). Decisões do autor em 28/10/2026: DA2 (a), DA4 (tarefa aceita), DA5 (critério deixado a este spec). DA3 decidida depois da explicação. DA1 revista pelo autor para as duas coletas, depois de ver o conflito da resposta (a) com a EBD. DA6 e DA7 decididas como consequência da EBD. A EBD foi corrigida na versão 3.0 (seção 12).
 Depende de 02 (camadas e bronze), 03 (variáveis), 05 (segredos, B3 e B4), 06 (API do backend atrás do ALB) e 08 (estrutura e `infra`). As etapas que o constroem são a E10 e a E11 de 09.
 
 ## 1. Escopo
@@ -114,13 +114,13 @@ datasets/tendencias_produtos/{bruto,resumo,serie,rejeicoes}/env=<env>/data_colet
 ## 9. Decisões
 | # | Decisão | Situação |
 |---|---|---|
-| DA1 | Qual coleta a Lambda faz. O autor respondeu (a), "só os produtos do sistema", mas a EBD especifica a base POF/IBGE + Trends com execução semanal automatizada. Proposta revista: **as duas**, com a da EBD semanal na camada `analytics` e a dos produtos do sistema no ambiente | **Aguarda confirmação** (28/10/2026) |
+| DA1 | Qual coleta a Lambda faz. O autor respondeu (a), "só os produtos do sistema", mas a EBD especifica a base POF/IBGE + Trends com execução semanal automatizada. Proposta revista: **as duas**, com a da EBD semanal na camada `analytics` e a dos produtos do sistema no ambiente | **Decidido** (28/10/2026): as duas coletas |
 | DA2 | Lambda real chamando o Google Trends, com prova no primeiro passo da E10; plano B: script local + `infra dataset upload` | **Decidido** (28/10/2026) |
 | DA3 | Usuário do sistema próprio da coleta; email e senha como segredos manuais no `secrets.env` → SSM | **Decidido** (28/10/2026) |
 | DA4 | Mudanças no repositório do dataset (seção 3) como tarefa fora da infra, com tag | **Decidido** (28/10/2026) |
 | DA5 | Camada persistente `analytics/` com Glue (tabelas declaradas e partition projection, sem crawler), workgroup, bucket de resultados e tabelas dos logs | **Decidido** (28/10/2026; o autor deixou o critério a este spec) |
-| DA6 | Dicionário no formato da EBD, seção 3.1, estendido a todos os campos, em `docs/dicionario-de-dados.md`, conferido por script | *Proposto*; o autor pediu a validação contra a EBD (seção 12) |
-| DA7 | Saída no bronze: o arquivo bruto com o contrato da EBD e as versões normalizadas em JSON Lines para o Glue; partição por `data_coleta` (carga full semanal) | *Proposto* (28/10/2026, consequência da EBD, seções 2.1 e 4.1) |
+| DA6 | Dicionário no formato da EBD, seção 3.1, estendido a todos os campos, em `docs/dicionario-de-dados.md`, conferido por script | **Decidido** (28/10/2026, conferido com a EBD) |
+| DA7 | Saída no bronze: o arquivo bruto com o contrato da EBD e as versões normalizadas em JSON Lines para o Glue; partição por `data_coleta` (carga full semanal) | **Decidido** (28/10/2026, consequência da EBD, seções 2.1 e 4.1) |
 
 ## Parte B – Dicionário de dados
 
@@ -160,7 +160,6 @@ O que a implementação atual (scripts do dataset) ainda não cumpre e entra nas
 A versão 2.0 da EBD tinha 14 inconsistências entre as próprias seções e com o script. A pedido do autor, elas foram corrigidas na **versão 3.0** (Claude Doc https://claude.ai/artifact/Gsf78CGjy1QfMYkTbMk6bY), que passa a ser a referência deste spec. Onze eram só de texto: domínio dos valores do Trends (decimais, não inteiros), vírgula decimal nos exemplos, exemplo fora do domínio de `evento_associado`, tercis descritos sobre a variável errada, origem "Feriados Nacionais" não usada, limitações e carga misturando a POF com os produtos do sistema, riscos separados por base, rótulos das faixas e erros de digitação. As três que também mudam o script estão no item 8 da seção 3.
 
 ## 13. Pendências
-- DA1 (confirmação).
 - Descobertas no laboratório, na E10: se a `LabRole` pode ser usada pela Lambda e pelo EventBridge, se o layer público do AWS SDK for pandas está acessível, se o Glue e o Athena aceitam a `LabRole` e **se a agenda semanal dispara com a sessão do laboratório encerrada**; resultado registrado em 02, seção 10. Se não disparar, a coleta semanal passa a ser feita pelo `infra dataset run pof-trends` no início de cada sessão.
 - Valores de domínio dos campos de texto livre do banco, lidos dos enums do backend na E11.
 - Levar a EBD 3.0 (seção 12) ao documento oficial do grupo.

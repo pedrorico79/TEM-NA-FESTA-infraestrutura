@@ -36,7 +36,7 @@ flowchart LR
 |---|---|---|
 | `bootstrap` | bucket do state do Terraform; bucket bronze (e futuros silver/gold) | rodada **uma vez**; nunca entra no destroy dos ambientes |
 | `envs/dev` e `envs/prod` | VPC, ALB, EC2, RDS, security groups, bucket de artefatos (compose files e scripts de subida, recriado a cada `apply`), parâmetros SSM de segredos | criada e destruída a cada ciclo; cada ambiente tem o seu state |
-| `analytics` (*Proposto*, 10) | banco `tnf_bronze` e tabelas do Glue, workgroup do Athena, bucket de resultados do Athena, visões | persistente como o `bootstrap`, com state próprio; a Lambda de coleta fica no ambiente (módulo `datasets`) |
+| `analytics` (*Decidido*, 10) | banco `tnf_bronze` e tabelas do Glue, workgroup do Athena, bucket de resultados do Athena, visões | persistente como o `bootstrap`, com state próprio; a Lambda de coleta fica no ambiente (módulo `datasets`) |
 
 - **Por que duas camadas:** o bucket do state precisa existir antes de o Terraform começar a gravar nele (ovo e galinha), e os buckets de dados precisam sobreviver ao destroy (RF-06). Misturá-los à infra efêmera exigiria truques de `prevent_destroy`.
 - **State remoto em S3** (*Decidido*): permite migrar depois para o GitHub Actions sem trabalho extra e protege contra perda do arquivo local.
@@ -123,7 +123,7 @@ Detalhe das stacks, da rede overlay e da política de atualização em 06.
 - **Fluent Bit instalado em cada EC2** (*Decidido*): serviço systemd configurado na subida, com as três entradas do seu diagrama: logs de containers Docker, `auth.log` e systemd; saída em JSON para o bucket bronze por S3 output, com a chave por data (layout em 05, B4). Não roda como container do Swarm. A configuração concreta está em 7.1 e o diagrama redesenhado, no anexo A.
 - **Inconsistência corrigida (achado na sua imagem):** o `match` da saída era `nginx.logs`, mas as tags das entradas são `docker.apps`, `so.auth` e `systemd.app`, então nada casaria com a saída. A especificação usa uma tag por origem (`docker`, `auth`, `systemd`) e **uma saída para cada tag**, com chaves de S3 separadas por origem.
 - **A entrada de systemd do seu diagrama filtrava `app.service`, que não existe neste desenho** (a aplicação roda em containers, cujos logs entram pela origem `docker`). Ela foi substituída por uma lista fechada de unidades (7.1).
-- Dados analíticos (*Proposto* em 28/10/2026): Lambda de coleta do dataset gravando em `datasets/` no bronze, Glue com tabelas declaradas e Athena, na camada `analytics` (spec 10). Silver e gold como buckets próprios continuam fora.
+- Dados analíticos (*Decidido* em 28/10/2026): Lambdas de coleta (a base da disciplina, semanal, na camada `analytics`; a dos produtos do sistema, no ambiente) gravando em `datasets/` no bronze, Glue com tabelas declaradas e Athena, na camada `analytics` (spec 10). Silver e gold como buckets próprios continuam fora.
 
 ### 7.1 Configuração do Fluent Bit (*Decidido* em 10/10/2026, A13)
 O `node-bootstrap.sh` renderiza a configuração a partir de `node/fluent-bit/fluent-bit.conf.tftpl` e `parsers.conf` (08), com `env`, região, bucket bronze e papel do nó, e habilita o serviço (04, seção 5, passo 3).
