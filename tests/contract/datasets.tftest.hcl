@@ -62,6 +62,7 @@ run "D1_D10_lambda_do_ambiente_no_modulo" {
     region               = "us-east-1"
     bronze_bucket        = "bucket-bronze-000000000000-us-east-1"
     api_url              = "http://alb.exemplo.invalid/api/v1"
+    dataset_repo_url     = "https://github.com/pedrorico79/TEM-NA-FESTA-dataset"
     dataset_ref          = "v1.0.0"
     lambda_zip_path      = "/tmp/tnf-teste-inexistente.zip"
     pandas_layer_version = 17

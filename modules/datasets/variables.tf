@@ -18,6 +18,11 @@ variable "api_url" {
   type        = string
 }
 
+variable "dataset_repo_url" {
+  description = "Repositório do dataset (para a descrição da função)."
+  type        = string
+}
+
 variable "dataset_ref" {
   description = "Tag do repositório do dataset empacotada na Lambda."
   type        = string

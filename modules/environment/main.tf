@@ -256,6 +256,7 @@ module "datasets" {
   region               = var.region
   bronze_bucket        = local.bronze_bucket_name
   api_url              = "http://${module.alb.dns_name}/api/v1"
+  dataset_repo_url     = var.dataset_repo_url
   dataset_ref          = var.dataset_ref
   lambda_zip_path      = "${local.repo_root}/.infra/build/tendencias-${var.dataset_ref}.zip"
   schedule             = var.dataset_schedule

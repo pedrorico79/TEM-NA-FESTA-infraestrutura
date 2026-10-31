@@ -35,7 +35,7 @@ resource "aws_cloudwatch_log_group" "pof_trends" {
 
 resource "aws_lambda_function" "pof_trends" {
   function_name = "tnf-coleta-pof-trends"
-  description   = "Coleta semanal da base POF/IBGE + Google Trends (dataset ${var.dataset_ref})"
+  description   = "Coleta semanal da base POF/IBGE + Google Trends (${var.dataset_repo_url} na tag ${var.dataset_ref})"
   role          = data.aws_iam_role.lab.arn
   runtime       = "python3.12"
   handler       = "tnf_pof_trends.handler"

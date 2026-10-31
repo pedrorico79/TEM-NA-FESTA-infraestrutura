@@ -3,7 +3,8 @@
 #
 #   make fmt     formata o Terraform
 #   make lint    tflint, shellcheck, yamllint e a higiene do repositório
-#   make test    terraform validate nas raízes, terraform test do contrato e bats
+#   make test    terraform validate nas raízes, terraform test do contrato e da
+#                camada analytics, e bats
 #   make trace   rastreabilidade dos testes (make trace STRICT=1 para o modo estrito)
 #   make check   tudo acima, com o fmt em modo de verificação
 
@@ -12,7 +13,7 @@ SHELL := /usr/bin/env bash
 .DEFAULT_GOAL := help
 
 # Raízes do Terraform (08, seção 2). Uma raiz sem arquivos .tf é pulada.
-TF_ROOTS := bootstrap envs/dev envs/prod
+TF_ROOTS := bootstrap analytics envs/dev envs/prod
 # Testes do contrato (03, seção 6): cada run chama modules/environment com
 # o provedor AWS simulado de tests/contract/mocks.
 CONTRACT_TESTS := tests/contract
@@ -20,7 +21,7 @@ CONTRACT_TESTS := tests/contract
 YAML_DIRS := stacks .github
 YAMLLINT_CONFIG := {extends: default, rules: {line-length: disable, document-start: disable, truthy: {check-keys: false}}}
 
-.PHONY: help fmt fmt-check lint lint-tf lint-sh lint-yaml hygiene check-eol check-ignored check-lock test validate contract contract-envs bats trace check
+.PHONY: help fmt fmt-check lint lint-tf lint-sh lint-yaml hygiene check-eol check-ignored check-lock test validate contract contract-envs analytics-test bats trace check
 
 help:
 	@sed -n '1,9p' Makefile | sed 's/^# \{0,1\}//'
@@ -80,7 +81,7 @@ check-lock:
 	  echo "ERRO: raízes do Terraform sem .terraform.lock.hcl versionado:$$missing. Rode 'terraform init' na raiz e faça 'git add' do lock."; exit 2; \
 	fi; echo "ok"
 
-test: validate contract contract-envs bats
+test: validate contract contract-envs analytics-test bats
 
 # Usa uma pasta de dados temporária (TF_DATA_DIR) para não depender nem mexer
 # no .terraform/ que o infra inicializou com o backend real e credenciais.
@@ -125,6 +126,14 @@ contract-envs:
 	  echo "-- $$e"; \
 	  terraform -chdir="$(CONTRACT_TESTS)/envs" test -test-directory=. "$${args[@]}"; \
 	done
+
+# Testes da camada analytics (10, D1 a D3), com o provedor AWS simulado.
+analytics-test:
+	@echo "== terraform test (analytics)"
+	@d="$$(mktemp -d)"; \
+	TF_DATA_DIR="$$d" terraform -chdir=analytics init -backend=false -input=false >/dev/null; \
+	rc=0; TF_DATA_DIR="$$d" terraform -chdir=analytics test || rc=$$?; \
+	rm -rf "$$d"; exit $$rc
 
 bats:
 	@echo "== bats"

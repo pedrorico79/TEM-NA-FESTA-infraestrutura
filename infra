@@ -30,6 +30,9 @@ Comandos (a etapa de 09 em que cada um chega está entre parênteses):
   snapshot <env>               snapshot manual do banco (E4b)
   snapshots <env>              lista os snapshots do ambiente (E4b)
   down <env>                   destrói o ambiente, com snapshot final do banco (E3)
+  analytics <plan|up>          camada persistente de dados: Lambda da EBD, Glue e Athena (E10)
+  dataset run <alvo>           roda uma coleta agora: pof-trends, dev ou prod (E10)
+  dataset upload <alvo> <pasta>  plano B: envia ao bronze a coleta feita localmente (E10)
 
 Ambientes: dev, prod. Ajuda de um comando: infra <comando> --help
 Referência: specs/08-estrutura-do-repositorio.md, seção 5.
@@ -501,6 +504,17 @@ cmd_env() {
 
   load_manual_secrets "$env" "$op"
 
+  # Pacote da Lambda de coleta do ambiente, na tag dataset_ref (10, seção 4).
+  if [[ "$op" != down ]] && datasets_on "$env"; then
+    local dataset_ref
+    dataset_ref="$(read_tfvar "$INFRA_ROOT/envs/$env/terraform.tfvars" dataset_ref "")"
+    if [[ -n "$dataset_ref" ]]; then
+      echo "== pacote da Lambda de coleta ($dataset_ref)"
+      "$INFRA_ROOT/scripts/build-dataset-lambda.sh" tendencias "$dataset_ref" \
+        "$(read_tfvar "$INFRA_ROOT/envs/$env/terraform.tfvars" dataset_repo_url https://github.com/pedrorico79/TEM-NA-FESTA-dataset)"
+    fi
+  fi
+
   echo "== terraform init ($env)"
   tf_env_init "$env"
   local tf_args=(-input=false -var-file="$INFRA_ROOT/envs/$env/terraform.tfvars")
@@ -657,7 +671,11 @@ cmd_ssh() {
 # --- segredos manuais (05, A5) -------------------------------------------------------
 
 SECRETS_FILE="$INFRA_ROOT/secrets.env"
-MANUAL_SECRET_KEYS="whapi_token" # chaves de messaging_secrets (E8): o token da API da Whapi
+# Grupos de segredos manuais: a variável do Terraform e as chaves do
+# secrets.env. A mensageria (E8) usa o token da Whapi; a coleta dos produtos
+# do sistema (E10) usa o login do usuário de coleta (10, seção 8).
+MESSAGING_SECRET_KEYS="whapi_token"
+DATASET_SECRET_KEYS="dataset_api_email dataset_api_password"
 
 # messaging_on <env>: 0 quando o terraform.tfvars liga a mensageria
 # (service_replicas.messaging > 0); só assim há segredo manual (03, seção 3.4).
@@ -668,27 +686,32 @@ messaging_on() {
   ((${n:-0} > 0))
 }
 
+# datasets_on <env>: 0 quando o terraform.tfvars liga a coleta (datasets_enabled).
+datasets_on() {
+  [[ "$(read_tfvar "$INFRA_ROOT/envs/$1/terraform.tfvars" datasets_enabled false)" == true ]]
+}
+
 # secret_value <chave>: valor da chave no secrets.env (formato chave=valor).
 secret_value() {
   sed -n "s/^$1=//p" "$SECRETS_FILE" 2>/dev/null | tail -n 1
 }
 
-# load_manual_secrets <env> <op>: com a mensageria ligada, entrega os segredos
-# do secrets.env ao Terraform por TF_VAR_messaging_secrets, nunca por linha de
-# comando (05, A5). Falta de arquivo ou de chave aborta antes do plan ou do
-# apply (Q8). No down, sem o arquivo, segue com um marcador: o destroy não usa
-# o valor.
-load_manual_secrets() {
-  local env="$1" op="$2" key value json='{}' missing=""
-  messaging_on "$env" || return 0
-  if [[ ! -f "$SECRETS_FILE" ]]; then
-    if [[ "$op" == down ]]; then
-      export TF_VAR_messaging_secrets='{"whapi_token":"sem-secrets-env"}'
-      return 0
-    fi
-    die "$EXIT_PRECONDITION" "a mensageria está ligada em envs/$env/terraform.tfvars e não há secrets.env. Crie-o com 'infra init-secrets' (05, A5); nada foi aplicado."
+# export_secret_group <variável> <op> <motivo> <chaves...>: entrega as chaves ao
+# Terraform por TF_VAR_<variável>, nunca por linha de comando (05, A5). Falta
+# de arquivo ou de chave aborta antes do plan ou do apply (Q8). No down, sem o
+# arquivo, segue com marcadores: o destroy não usa os valores.
+export_secret_group() {
+  local var="$1" op="$2" motivo="$3" key value json='{}' missing=""
+  shift 3
+  if [[ ! -f "$SECRETS_FILE" && "$op" == down ]]; then
+    for key in "$@"; do json="$(jq -c --arg k "$key" '.[$k] = "sem-secrets-env"' <<<"$json")"; done
+    export "TF_VAR_$var=$json"
+    return 0
   fi
-  for key in $MANUAL_SECRET_KEYS; do
+  if [[ ! -f "$SECRETS_FILE" ]]; then
+    die "$EXIT_PRECONDITION" "$motivo e não há secrets.env. Crie-o com 'infra init-secrets' (05, A5); nada foi aplicado."
+  fi
+  for key in "$@"; do
     value="$(secret_value "$key")"
     if [[ -z "$value" ]]; then
       missing="$missing $key"
@@ -699,7 +722,20 @@ load_manual_secrets() {
   if [[ -n "$missing" ]]; then
     die "$EXIT_PRECONDITION" "falta(m) no secrets.env:$missing. Rode 'infra init-secrets' para preencher; nada foi aplicado."
   fi
-  export TF_VAR_messaging_secrets="$json"
+  export "TF_VAR_$var=$json"
+}
+
+# load_manual_secrets <env> <op>: os grupos ligados no terraform.tfvars do ambiente.
+load_manual_secrets() {
+  local env="$1" op="$2"
+  if messaging_on "$env"; then
+    # shellcheck disable=SC2086 # as chaves são palavras separadas de propósito
+    export_secret_group messaging_secrets "$op" "a mensageria está ligada em envs/$env/terraform.tfvars" $MESSAGING_SECRET_KEYS
+  fi
+  if datasets_on "$env"; then
+    # shellcheck disable=SC2086
+    export_secret_group dataset_secrets "$op" "a coleta (datasets_enabled) está ligada em envs/$env/terraform.tfvars" $DATASET_SECRET_KEYS
+  fi
 }
 
 usage_init_secrets() {
@@ -707,9 +743,11 @@ usage_init_secrets() {
 Uso: infra init-secrets
 
 Cria (ou refaz) o secrets.env na raiz do repositório, com permissão 600 e
-fora do Git, perguntando cada segredo manual sem mostrar o que é digitado.
-Hoje o único é whapi_token, o token da API da Whapi usado pelo microsserviço
-de mensageria. Só é necessário com a mensageria ligada (05, A5).
+fora do Git, perguntando cada segredo manual sem mostrar o que é digitado
+(05, A5). Deixe em branco o que não usa:
+  whapi_token            token da API da Whapi (mensageria ligada)
+  dataset_api_email      email do usuário de coleta (datasets_enabled = true)
+  dataset_api_password   senha do usuário de coleta (datasets_enabled = true)
 EOF
 }
 
@@ -720,20 +758,198 @@ cmd_init_secrets() {
     say_info "nada foi alterado."
     return 0
   fi
-  for key in $MANUAL_SECRET_KEYS; do
-    read -r -s -p "$key: " value
+  for key in $MESSAGING_SECRET_KEYS $DATASET_SECRET_KEYS; do
+    value=""
+    read -r -s -p "$key (em branco se não usa): " value || true
     echo
-    if [[ -z "$value" || "$value" =~ [[:space:]] ]]; then
-      die "$EXIT_PRECONDITION" "$key não pode ser vazio nem ter espaços; nada foi gravado."
+    [[ -n "$value" ]] || continue
+    if [[ "$value" =~ [[:space:]] ]]; then
+      die "$EXIT_PRECONDITION" "$key não pode ter espaços; nada foi gravado."
     fi
     content+="$key=$value"$'\n'
   done
+  if [[ -z "$content" ]]; then
+    die "$EXIT_PRECONDITION" "nenhum segredo informado; nada foi gravado."
+  fi
   (
     umask 077
     printf '%s' "$content" >"$SECRETS_FILE"
   )
   chmod 600 "$SECRETS_FILE"
   say_ok "secrets.env gravado com permissão 600 (fora do Git)."
+}
+
+# --- dados analíticos (10; E10) --------------------------------------------------------
+
+ANALYTICS_DIR="$INFRA_ROOT/analytics"
+# Ordem de criação das visões: cada uma pode usar as anteriores.
+ANALYTICS_VIEWS="vw_pof_trends_atual vw_pof_trends_sazonalidade vw_pof_trends_consumo_x_estabilidade vw_tendencias_produtos_atual"
+
+usage_analytics() {
+  cat <<'EOF'
+Uso: infra analytics <plan|up>
+
+Camada persistente de dados analíticos (10, DA5): a Lambda semanal da base da
+EBD, o catálogo do Glue, o workgroup do Athena e o bucket de resultados.
+  plan   empacota a Lambda e mostra o plano, sem criar nada
+  up     empacota, cria o bucket de resultados se faltar, aplica e cria as
+         visões de analytics/views/ no Athena
+Fica no ar com ou sem ambiente; o infra down não a toca.
+EOF
+}
+
+# analytics_context: conta, região, bronze, bucket de resultados e tag.
+analytics_context() {
+  ACCOUNT="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)" ||
+    die "$EXIT_PRECONDITION" "credenciais da AWS ausentes, inválidas ou vencidas. Atualize-as no WSL e rode de novo."
+  A_REGION="$(read_tfvar "$ANALYTICS_DIR/terraform.tfvars" region us-east-1)"
+  A_RESULTS="tnf-athena-$ACCOUNT-$A_REGION"
+  A_BRONZE="bucket-bronze-$ACCOUNT-$(read_tfvar "$INFRA_ROOT/bootstrap/terraform.tfvars" bronze_bucket_region us-east-1)"
+  A_REF="$(read_tfvar "$ANALYTICS_DIR/terraform.tfvars" dataset_ref "")"
+}
+
+# athena_ddl <arquivo.sql>: executa um comando no workgroup tnf e espera.
+athena_ddl() {
+  local id state reason
+  id="$(aws athena start-query-execution --region "$A_REGION" --work-group tnf \
+    --query-execution-context Database=tnf_bronze --query-string "file://$1" \
+    --query QueryExecutionId --output text)"
+  for _ in $(seq 1 60); do
+    state="$(aws athena get-query-execution --region "$A_REGION" --query-execution-id "$id" \
+      --query QueryExecution.Status.State --output text)"
+    case "$state" in
+      SUCCEEDED) return 0 ;;
+      FAILED | CANCELLED)
+        reason="$(aws athena get-query-execution --region "$A_REGION" --query-execution-id "$id" \
+          --query QueryExecution.Status.StateChangeReason --output text)"
+        die "$EXIT_UNEXPECTED" "a visão $(basename "$1" .sql) falhou no Athena: $reason"
+        ;;
+    esac
+    sleep "${TNF_ATHENA_POLL:-2}"
+  done
+  die "$EXIT_TIMEOUT" "a visão $(basename "$1" .sql) não terminou em 2 minutos no Athena."
+}
+
+cmd_analytics() {
+  local op="${1:-}"
+  case "$op" in
+    -h | --help | "") usage_analytics; return 0 ;;
+    plan | up) ;;
+    *) die "$EXIT_PRECONDITION" "use 'infra analytics plan' ou 'infra analytics up'." ;;
+  esac
+  command -v terraform >/dev/null 2>&1 || die "$EXIT_PRECONDITION" "terraform não encontrado. Rode 'infra doctor'."
+  analytics_context
+  [[ -n "$A_REF" ]] || die "$EXIT_PRECONDITION" "preencha dataset_ref em analytics/terraform.tfvars com uma tag do repositório TEM-NA-FESTA-dataset (10, seção 7)."
+
+  echo "== pacote da Lambda da base da EBD ($A_REF)"
+  local zip
+  zip="$("$INFRA_ROOT/scripts/build-dataset-lambda.sh" pof-trends "$A_REF" \
+    "$(read_tfvar "$ANALYTICS_DIR/terraform.tfvars" dataset_repo_url https://github.com/pedrorico79/TEM-NA-FESTA-dataset)")"
+
+  if [[ "$op" == up ]] && ! aws s3api head-bucket --bucket "$A_RESULTS" >/dev/null 2>&1; then
+    if [[ "$A_REGION" == us-east-1 ]]; then
+      aws s3api create-bucket --bucket "$A_RESULTS" --region "$A_REGION" >/dev/null
+    else
+      aws s3api create-bucket --bucket "$A_RESULTS" --region "$A_REGION" \
+        --create-bucket-configuration "LocationConstraint=$A_REGION" >/dev/null
+    fi
+    say_ok "bucket de resultados do Athena $A_RESULTS criado."
+  fi
+
+  local state_region
+  state_region="$(read_tfvar "$INFRA_ROOT/bootstrap/terraform.tfvars" region us-east-1)"
+  TF_DATA_DIR="$INFRA_ROOT/.infra/tfdata/analytics"
+  export TF_DATA_DIR
+  echo "== terraform init (analytics)"
+  terraform -chdir="$ANALYTICS_DIR" init -input=false -reconfigure \
+    -backend-config="bucket=tnf-tfstate-$ACCOUNT-$state_region" \
+    -backend-config="region=$state_region" >/dev/null
+  local tf_args=(-input=false -var-file="$ANALYTICS_DIR/terraform.tfvars" -var="lambda_zip_path=$zip")
+  if [[ "$op" == plan ]]; then
+    echo "== terraform plan (analytics)"
+    terraform -chdir="$ANALYTICS_DIR" plan "${tf_args[@]}" || die "$EXIT_UNEXPECTED" "o terraform plan falhou; veja a mensagem acima."
+    return 0
+  fi
+  echo "== terraform apply (analytics)"
+  terraform -chdir="$ANALYTICS_DIR" apply -auto-approve "${tf_args[@]}" ||
+    die "$EXIT_UNEXPECTED" "o terraform apply falhou; veja a mensagem acima. Corrija e rode 'infra analytics up' de novo (é idempotente)."
+  echo "== visões no Athena"
+  local view
+  for view in $ANALYTICS_VIEWS; do
+    athena_ddl "$ANALYTICS_DIR/views/$view.sql"
+    say_ok "visão $view"
+  done
+  say_ok "camada analytics pronta: workgroup tnf, banco tnf_bronze, Lambda tnf-coleta-pof-trends."
+}
+
+usage_dataset() {
+  cat <<'EOF'
+Uso: infra dataset run <pof-trends|dev|prod> [--prazo <segundos>]
+     infra dataset upload <pof-trends|dev|prod> <pasta arquivos-gerados>
+
+  run      roda a coleta agora e mostra o resumo: pof-trends é a base da EBD
+           (camada analytics); dev ou prod, os produtos do sistema do ambiente.
+           --prazo encurta o prazo da Lambda, para testar a interrupção (D8).
+  upload   plano B (10, DA2): envia ao bronze a coleta feita na sua máquina
+           pelo script do dataset (pasta arquivos-gerados), no mesmo layout.
+Saída: 0 coleta gravada; 3 coleta interrompida (veja as rejeições).
+EOF
+}
+
+# dataset_target <pof-trends|env>: função, região e base do bronze.
+dataset_target() {
+  analytics_context
+  case "$1" in
+    pof-trends) D_FUNCTION=tnf-coleta-pof-trends D_REGION="$A_REGION" D_BASE=pof_trends D_FILTER="*" ;;
+    dev | prod) D_FUNCTION="tnf-$1-tendencias" D_REGION="$(env_region "$1")" D_BASE=tendencias_produtos D_FILTER="*env=$1/*" ;;
+    *) die "$EXIT_PRECONDITION" "informe pof-trends, dev ou prod (10, seção 4)." ;;
+  esac
+}
+
+cmd_dataset() {
+  local action="${1:-}" target="${2:-}"
+  case "$action" in
+    -h | --help | "") usage_dataset; return 0 ;;
+    run | upload) ;;
+    *) die "$EXIT_PRECONDITION" "use 'infra dataset run' ou 'infra dataset upload' (veja --help)." ;;
+  esac
+  shift 2 || true
+  dataset_target "$target"
+
+  if [[ "$action" == upload ]]; then
+    local pasta="${1:-}"
+    [[ -d "$pasta/datasets/$D_BASE" ]] ||
+      die "$EXIT_PRECONDITION" "não encontrei $pasta/datasets/$D_BASE. Informe a pasta arquivos-gerados do repositório do dataset, depois de rodar o script (com TNF_ENV=$target na base dos produtos)."
+    aws s3 cp --recursive --only-show-errors --region "$D_REGION" \
+      --exclude "*" --include "$D_FILTER" --exclude "*.tmp" \
+      "$pasta/datasets/$D_BASE/" "s3://$A_BRONZE/datasets/$D_BASE/"
+    say_ok "coleta enviada a s3://$A_BRONZE/datasets/$D_BASE/; ela aparece nas consultas do Athena sem crawler."
+    return 0
+  fi
+
+  local payload='{}' out
+  if [[ "${1:-}" == --prazo ]]; then
+    [[ "${2:-}" =~ ^[0-9]+$ ]] || die "$EXIT_PRECONDITION" "--prazo precisa de um número de segundos."
+    payload="{\"prazo_segundos\": $2}"
+  fi
+  out="$(mktemp)"
+  echo "== coleta $D_FUNCTION (pode levar alguns minutos)"
+  aws lambda invoke --function-name "$D_FUNCTION" --region "$D_REGION" \
+    --cli-read-timeout 960 --cli-binary-format raw-in-base64-out \
+    --payload "$payload" "$out" >/dev/null 2>"$out.err" ||
+    die "$EXIT_PRECONDITION" "não foi possível invocar $D_FUNCTION: $(tail -n 1 "$out.err"). Ela existe? (infra analytics up, ou datasets_enabled = true e infra up $target)"
+  jq -r '"  status:     \(.status)",
+         "  data:       \(.data_coleta)",
+         (if .status == "ok" then "  produtos:   \(.produtos)" else "  motivo:     \(.motivo)" end),
+         "  rejeições:  \(.rejeicoes)",
+         (.chaves[]? | "  gravado:    \(.)")' "$out" 2>/dev/null || cat "$out"
+  if [[ "$(jq -r .status "$out" 2>/dev/null)" == ok ]]; then
+    rm -f "$out" "$out.err"
+    say_ok "coleta gravada."
+    return 0
+  fi
+  rm -f "$out" "$out.err"
+  die "$EXIT_TIMEOUT" "a coleta foi interrompida sem gravar nada; a anterior ficou intacta. Veja o motivo acima e o arquivo de rejeições."
 }
 
 not_yet() {
@@ -755,6 +971,8 @@ main() {
     snapshot) cmd_snapshot create "$@" ;;
     snapshots) cmd_snapshot list "$@" ;;
     init-secrets) cmd_init_secrets "$@" ;;
+    analytics) cmd_analytics "$@" ;;
+    dataset) cmd_dataset "$@" ;;
     *) die "$EXIT_PRECONDITION" "comando desconhecido: '$cmd'. Veja 'infra --help'." ;;
   esac
 }

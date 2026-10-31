@@ -30,7 +30,7 @@ resource "aws_cloudwatch_log_group" "this" {
 
 resource "aws_lambda_function" "this" {
   function_name = local.function_name
-  description   = "Tendências dos produtos do sistema no Google Trends (dataset ${var.dataset_ref})"
+  description   = "Tendências dos produtos do sistema no Google Trends (${var.dataset_repo_url} na tag ${var.dataset_ref})"
   role          = data.aws_iam_role.lab.arn
   runtime       = "python3.12"
   handler       = "tnf_tendencias.handler"
