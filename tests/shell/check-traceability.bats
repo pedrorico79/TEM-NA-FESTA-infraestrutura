@@ -221,3 +221,20 @@ EOF
   [ "$status" -eq 2 ]
   [[ "$output" == *"tabela de rastreabilidade não encontrada"* ]]
 }
+
+@test "E10: o spec 10 e a letra D entram na conferência" {
+  cat >"$SPECS/10-dados.md" <<'EOS'
+# 10 – Dados
+## 9. Decisões
+| D7 | decisão, fora de "Critérios de aceite" | não conta |
+## 11. Critérios de aceite
+| # | Cenário | Esperado |
+|---|---|---|
+| D1 | caso 1 | ok |
+EOS
+  check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"D1 (10-dados.md) não aparece em nenhuma lista"* ]]
+  [[ "$output" == *"D1 (10-dados.md) não tem linha"* ]]
+  [[ "$output" != *"D7"* ]]
+}

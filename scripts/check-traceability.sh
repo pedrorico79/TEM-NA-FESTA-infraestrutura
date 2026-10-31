@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Confere a rastreabilidade dos testes (08, seção 7; 09, seção 1; G10):
-# specs 03 a 09 × tests/TRACEABILITY.md × listas "Pronto quando" de 09.
+# specs 03 a 10 × tests/TRACEABILITY.md × listas "Pronto quando" de 09.
 #
 # Uso: scripts/check-traceability.sh [--strict] [--specs <pasta>] [--table <arquivo>]
 #   --strict   também recusa situação "pendente", verificador "a definir" e
@@ -41,11 +41,11 @@ if [[ ! -f "$TABLE" ]]; then
 fi
 
 shopt -s nullglob
-spec_files=("$SPECS_DIR"/0[3-9]-*.md)
+spec_files=("$SPECS_DIR"/0[3-9]-*.md "$SPECS_DIR"/1[0-9]-*.md)
 plan_files=("$SPECS_DIR"/09-*.md)
 shopt -u nullglob
 if [[ ${#spec_files[@]} -eq 0 ]]; then
-  echo "ERRO: nenhum spec 03 a 09 encontrado em $SPECS_DIR" >&2
+  echo "ERRO: nenhum spec 03 a 10 encontrado em $SPECS_DIR" >&2
   exit 2
 fi
 if [[ ${#plan_files[@]} -ne 1 ]]; then
@@ -56,7 +56,8 @@ PLAN="${plan_files[0]}"
 PLAN_NAME="$(basename "$PLAN")"
 TABLE_NAME="$(basename "$TABLE")"
 
-ID_RE='[TSQRCGP][0-9]+'
+# D: dados analíticos (10), desde a E10.
+ID_RE='[TSQRCGPD][0-9]+'
 
 # 1. IDs dos specs: primeira coluna das tabelas sob títulos "Critérios de aceite".
 declare -A spec_of=()
@@ -66,7 +67,7 @@ while IFS=$'\t' read -r id file; do
 done < <(awk '
   FNR == 1 { inside = 0 }
   /^#/ { inside = ($0 ~ /Critérios de aceite/); next }
-  inside && match($0, /^\|[ \t]*[TSQRCGP][0-9]+[ \t]*\|/) {
+  inside && match($0, /^\|[ \t]*[TSQRCGPD][0-9]+[ \t]*\|/) {
     id = substr($0, RSTART, RLENGTH); gsub(/[| \t]/, "", id)
     print id "\t" FILENAME
   }' "${spec_files[@]}")
@@ -158,7 +159,7 @@ done
 # (b) linhas da tabela; (d) etapa divergente; campos obrigatórios e situação.
 for id in $(printf '%s\n' "${!row_stage[@]}" | sort -V); do
   if [[ -z "${spec_of[$id]:-}" ]]; then
-    err "$id está em $TABLE_NAME, mas não existe em nenhuma tabela \"Critérios de aceite\" dos specs 03 a 09. Remova a linha ou corrija o ID."
+    err "$id está em $TABLE_NAME, mas não existe em nenhuma tabela \"Critérios de aceite\" dos specs 03 a 10. Remova a linha ou corrija o ID."
     continue
   fi
   st="${row_stage[$id]}" ver="${row_ver[$id]}" sit="${row_sit[$id]}"
