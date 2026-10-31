@@ -6,6 +6,7 @@
 #   make test    terraform validate nas raízes, terraform test do contrato e da
 #                camada analytics, e bats
 #   make trace   rastreabilidade dos testes (make trace STRICT=1 para o modo estrito)
+#   make dict    confere o dicionário de dados com o banco, o Glue e a EBD (10, D12)
 #   make check   tudo acima, com o fmt em modo de verificação
 
 SHELL := /usr/bin/env bash
@@ -21,7 +22,7 @@ CONTRACT_TESTS := tests/contract
 YAML_DIRS := stacks .github
 YAMLLINT_CONFIG := {extends: default, rules: {line-length: disable, document-start: disable, truthy: {check-keys: false}}}
 
-.PHONY: help fmt fmt-check lint lint-tf lint-sh lint-yaml hygiene check-eol check-ignored check-lock test validate contract contract-envs analytics-test bats trace check
+.PHONY: help fmt fmt-check lint lint-tf lint-sh lint-yaml hygiene check-eol check-ignored check-lock test validate contract contract-envs analytics-test bats trace dict check
 
 help:
 	@sed -n '1,9p' Makefile | sed 's/^# \{0,1\}//'
@@ -143,5 +144,10 @@ trace:
 	@echo "== rastreabilidade"
 	scripts/check-traceability.sh $(if $(STRICT),--strict)
 
-check: fmt-check lint test trace
+# Dicionário de dados (10, seção 10): baixa o script do banco na tag db_schema_ref.
+dict:
+	@echo "== dicionário de dados"
+	scripts/check-dictionary.sh
+
+check: fmt-check lint test trace dict
 	@echo "make check: tudo certo"

@@ -3,6 +3,8 @@
 # Athena a partir do caminho no bronze (layouts de 10, seção 5, e 05, B4):
 # uma coleta nova aparece na consulta sem crawler e sem MSCK REPAIR.
 # Colunas que já são partição (data_coleta, env) não se repetem no schema.
+# As colunas de cada tabela vêm de tabelas.json, a mesma fonte que o
+# scripts/check-dictionary.sh confere com o dicionário de dados (D12).
 
 resource "aws_glue_catalog_database" "bronze" {
   name        = "tnf_bronze"
@@ -12,30 +14,7 @@ resource "aws_glue_catalog_database" "bronze" {
 locals {
   bronze = "s3://${local.bronze_bucket_name}"
 
-  metricas = {
-    popularidade_media = "double"
-    popularidade_pico  = "double"
-    mes_pico           = "int"
-    fator_sazonalidade = "double"
-    tipo_feriado_pico  = "string"
-    evento_associado   = "string"
-  }
-
-  serie = {
-    produto_id     = "int"
-    mes_referencia = "string"
-    popularidade   = "double"
-    mes_parcial    = "boolean"
-  }
-
-  rejeicoes = {
-    produto_id      = "int"
-    produto         = "string"
-    regra           = "string"
-    motivo          = "string"
-    severidade      = "string"
-    data_ocorrencia = "string"
-  }
+  colunas = jsondecode(file("${path.module}/tabelas.json"))
 
   # Projeção das partições de cada layout.
   proj_coleta = {
@@ -71,7 +50,7 @@ locals {
       particoes  = local.coleta
       template   = "data_coleta=$${data_coleta}"
       projecao   = local.proj_coleta
-      colunas    = merge({ produto_id = "int", produto_ibge = "string", termo_trends = "string", consumo_kg_sp = "double" }, local.metricas)
+      colunas    = local.colunas["pof_trends_resumo"]
       mapeamento = {}
     }
     pof_trends_serie = {
@@ -80,7 +59,7 @@ locals {
       particoes  = local.coleta
       template   = "data_coleta=$${data_coleta}"
       projecao   = local.proj_coleta
-      colunas    = local.serie
+      colunas    = local.colunas["pof_trends_serie"]
       mapeamento = {}
     }
     pof_trends_rejeicoes = {
@@ -89,7 +68,7 @@ locals {
       particoes  = local.coleta
       template   = "data_coleta=$${data_coleta}"
       projecao   = local.proj_coleta
-      colunas    = local.rejeicoes
+      colunas    = local.colunas["pof_trends_rejeicoes"]
       mapeamento = {}
     }
     tendencias_produtos_resumo = {
@@ -98,7 +77,7 @@ locals {
       particoes  = local.env_coleta
       template   = "env=$${env}/data_coleta=$${data_coleta}"
       projecao   = merge(local.proj_env, local.proj_coleta)
-      colunas    = merge({ produto_id = "int", produto_nome = "string", preco_venda = "double" }, local.metricas)
+      colunas    = local.colunas["tendencias_produtos_resumo"]
       mapeamento = {}
     }
     tendencias_produtos_serie = {
@@ -107,7 +86,7 @@ locals {
       particoes  = local.env_coleta
       template   = "env=$${env}/data_coleta=$${data_coleta}"
       projecao   = merge(local.proj_env, local.proj_coleta)
-      colunas    = local.serie
+      colunas    = local.colunas["tendencias_produtos_serie"]
       mapeamento = {}
     }
     tendencias_produtos_rejeicoes = {
@@ -116,7 +95,7 @@ locals {
       particoes  = local.env_coleta
       template   = "env=$${env}/data_coleta=$${data_coleta}"
       projecao   = merge(local.proj_env, local.proj_coleta)
-      colunas    = local.rejeicoes
+      colunas    = local.colunas["tendencias_produtos_rejeicoes"]
       mapeamento = {}
     }
     logs_docker = {
@@ -125,7 +104,7 @@ locals {
       particoes  = local.env_dia
       template   = "env=$${env}/source=docker/year=$${year}/month=$${month}/day=$${day}"
       projecao   = merge(local.proj_env, local.proj_dia)
-      colunas    = { date = "string", log = "string", stream = "string", attrs = "map<string,string>", host = "string", role = "string", log_file = "string" }
+      colunas    = local.colunas["logs_docker"]
       mapeamento = {}
     }
     logs_auth = {
@@ -134,7 +113,7 @@ locals {
       particoes  = local.env_dia
       template   = "env=$${env}/source=auth/year=$${year}/month=$${month}/day=$${day}"
       projecao   = merge(local.proj_env, local.proj_dia)
-      colunas    = { date = "string", ident = "string", pid = "string", message = "string", host = "string", role = "string" }
+      colunas    = local.colunas["logs_auth"]
       mapeamento = {}
     }
     logs_systemd = {
@@ -143,7 +122,7 @@ locals {
       particoes  = local.env_dia
       template   = "env=$${env}/source=systemd/year=$${year}/month=$${month}/day=$${day}"
       projecao   = merge(local.proj_env, local.proj_dia)
-      colunas    = { date = "string", message = "string", systemd_unit = "string", priority = "string", host = "string", role = "string" }
+      colunas    = local.colunas["logs_systemd"]
       mapeamento = { "mapping.systemd_unit" = "_systemd_unit" }
     }
   }
