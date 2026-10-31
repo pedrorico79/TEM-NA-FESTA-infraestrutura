@@ -252,6 +252,49 @@ variable "messaging_secrets" {
   sensitive   = true
 }
 
+variable "datasets_enabled" {
+  description = "Ver modules/environment e 10."
+  type        = bool
+  default     = null
+}
+
+variable "dataset_repo_url" {
+  description = "Ver modules/environment e 10."
+  type        = string
+  default     = null
+}
+
+variable "dataset_ref" {
+  description = "Ver modules/environment e 10."
+  type        = string
+  default     = null
+}
+
+variable "dataset_schedule" {
+  description = "Ver modules/environment e 10."
+  type        = string
+  default     = null
+}
+
+variable "dataset_pandas_layer_version" {
+  description = "Ver modules/environment e 10."
+  type        = number
+  default     = null
+}
+
+variable "dataset_reserved_concurrency" {
+  description = "Ver modules/environment e 10."
+  type        = number
+  default     = null
+}
+
+variable "dataset_secrets" {
+  description = "Ver modules/environment e 10."
+  type        = map(string)
+  default     = null
+  sensitive   = true
+}
+
 module "environment" {
   source = "../../modules/environment"
 
@@ -295,6 +338,13 @@ module "environment" {
   bronze_bucket_name           = var.bronze_bucket_name
   bronze_bucket_region         = var.bronze_bucket_region
   messaging_secrets            = var.messaging_secrets
+  datasets_enabled             = var.datasets_enabled
+  dataset_repo_url             = var.dataset_repo_url
+  dataset_ref                  = var.dataset_ref
+  dataset_schedule             = var.dataset_schedule
+  dataset_pandas_layer_version = var.dataset_pandas_layer_version
+  dataset_reserved_concurrency = var.dataset_reserved_concurrency
+  dataset_secrets              = var.dataset_secrets
 }
 
 output "name_prefix" {
@@ -361,4 +411,9 @@ output "ssh_private_key" {
 output "alb_dns_name" {
   description = "Nome DNS do ALB (o endereço do sistema)."
   value       = module.environment.alb_dns_name
+}
+
+output "dataset_function_name" {
+  description = "Lambda de coleta do ambiente (null sem datasets_enabled)."
+  value       = module.environment.dataset_function_name
 }

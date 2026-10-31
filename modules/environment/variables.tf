@@ -554,6 +554,84 @@ variable "bronze_bucket_region" {
   }
 }
 
+# --- 3.9 Dados analíticos (10, seção 7) --------------------------------------------
+
+variable "datasets_enabled" {
+  description = "Liga o módulo datasets: a Lambda de coleta das tendências dos produtos do sistema (10, seção 4)."
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+variable "dataset_repo_url" {
+  description = "Repositório público com os scripts de coleta (10, seção 3)."
+  type        = string
+  default     = "https://github.com/pedrorico79/TEM-NA-FESTA-dataset"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^https://[^\\s]+$", var.dataset_repo_url))
+    error_message = "dataset_repo_url deve ser uma URL https://."
+  }
+}
+
+variable "dataset_ref" {
+  description = "Tag do repositório do dataset empacotada na Lambda; exigida com datasets_enabled = true (10, seção 7)."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = !var.datasets_enabled || var.dataset_ref != ""
+    error_message = "Com datasets_enabled = true, preencha dataset_ref em envs/${var.env}/terraform.tfvars com uma tag do repositório TEM-NA-FESTA-dataset (10, seção 7)."
+  }
+
+  validation {
+    condition     = !contains(["main", "master", "develop", "head"], lower(var.dataset_ref))
+    error_message = "dataset_ref = \"${var.dataset_ref}\" é uma branch: informe uma tag."
+  }
+}
+
+variable "dataset_schedule" {
+  description = "Agenda do EventBridge da coleta do ambiente (UTC); null não cria a regra (10, seção 4)."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.dataset_schedule == null || can(regex("^(cron\\([^)]+\\)|rate\\([0-9]+ (minute|minutes|hour|hours|day|days)\\))$", var.dataset_schedule))
+    error_message = "dataset_schedule deve ser uma expressão do EventBridge, como cron(0 12 ? * MON *) ou rate(7 days), ou null."
+  }
+}
+
+variable "dataset_pandas_layer_version" {
+  description = "Versão do layer público AWS SDK for pandas para Python 3.12 (conferida na E10)."
+  type        = number
+  default     = 17
+  nullable    = false
+}
+
+variable "dataset_reserved_concurrency" {
+  description = "Concorrência reservada da Lambda de coleta; -1 não reserva (o laboratório pode não permitir)."
+  type        = number
+  default     = 1
+  nullable    = false
+}
+
+variable "dataset_secrets" {
+  description = "Email e senha do usuário de coleta (dataset_api_email e dataset_api_password), vindos do secrets.env pelo infra; exigidos só com datasets_enabled = true (10, seção 8)."
+  type        = map(string)
+  default     = {}
+  nullable    = false
+  sensitive   = true
+
+  validation {
+    condition = !var.datasets_enabled || alltrue([
+      for k in ["dataset_api_email", "dataset_api_password"] : try(nonsensitive(var.dataset_secrets[k] != ""), false)
+    ])
+    error_message = "Com datasets_enabled = true, faltam dataset_api_email e dataset_api_password no secrets.env (crie com 'infra init-secrets')."
+  }
+}
+
 # --- 3.7 Segredos manuais --------------------------------------------------------
 
 variable "messaging_secrets" {

@@ -94,6 +94,11 @@ output "ssh_private_key" {
   sensitive   = true
 }
 
+output "dataset_function_name" {
+  description = "Lambda de coleta do ambiente (null com datasets_enabled = false)."
+  value       = try(module.datasets[0].function_name, null)
+}
+
 output "alb_dns_name" {
   description = "Nome DNS do ALB: o sistema responde em http://<nome> (RF-11)."
   value       = module.alb.dns_name

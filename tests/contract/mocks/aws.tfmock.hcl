@@ -34,6 +34,12 @@ mock_data "aws_ami" {
   }
 }
 
+mock_data "aws_iam_role" {
+  defaults = {
+    arn = "arn:aws:iam::000000000000:role/LabRole"
+  }
+}
+
 mock_data "aws_iam_instance_profile" {
   defaults = {
     name = "LabInstanceProfile"
