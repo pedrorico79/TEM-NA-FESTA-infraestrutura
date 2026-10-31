@@ -1,6 +1,6 @@
 # 01 – Visão e requisitos
 
-Estado: **confirmado** (08/10/2026); consolidado em 09/10/2026 com as decisões dos specs 02 a 09; ajustado em 10/10/2026 (RF-03 e RES-06, auditoria; RF-02 e critério 2, pareamento do WhatsApp como exceção ao nível 4, auditoria item 19)
+Estado: **confirmado** (08/10/2026); consolidado em 09/10/2026 com as decisões dos specs 02 a 09; ajustado em 10/10/2026 (RF-03 e RES-06, auditoria; RF-02 e critério 2, pareamento do WhatsApp como exceção ao nível 4, auditoria item 19); em 28/10/2026, dados analíticos e dicionário de dados trazidos para o escopo como decisão (RF-13, RF-14 e critério 8; spec 10)
 
 ## 1. Contexto
 O Tem Na Festa é um sistema interno de gestão de pedidos de uma confeitaria, em fase final de desenvolvimento e ainda sem uso real. Faz parte de um projeto de extensão da faculdade de Ciência da Computação.
@@ -23,6 +23,7 @@ A infra atual foi montada com foco em aprendizado e é difícil de manter, corri
 - Fluxo de envio de logs com Fluent Bit para o bucket bronze do S3.
 - CI/CD: build e publicação das imagens no Docker Hub e deploy manual por workflow.
 - Dois ambientes independentes: dev e prod.
+- *Decidido em 28/10/2026 (spec 10):* coleta semanal da base da disciplina (POF/IBGE + Google Trends) e coleta das tendências dos produtos do sistema, por Lambdas que gravam no bronze, catálogo no Glue e consultas no Athena; dicionário de dados do banco, do dataset e das tabelas do Athena.
 
 **Fora do escopo (por enquanto)**
 - Refatoração da API e versões de Java/Spring/React; novas funcionalidades (inclui a integração de eventos entre backend e microsserviço, que ainda não existe no backend; a infra apenas fixa o contrato, ver 06).
@@ -30,7 +31,7 @@ A infra atual foi montada com foco em aprendizado e é difícil de manter, corri
 - EFS (armazenamento compartilhado).
 - HTTPS e domínio próprio (acesso por HTTP pelo DNS do ALB).
 - Observabilidade (CloudWatch, SNS, e-mail do NOC): importante, será especificada depois que a infra estiver pronta.
-- Datalake além do bucket bronze com os logs: Lambda, Glue, Athena e camadas silver/gold ficam para depois.
+- Camadas silver e gold como buckets próprios, jobs de ETL e crawler do Glue (o spec 10 usa tabelas declaradas e visões do Athena como camada de consumo).
 - Execução do Terraform por GitHub Actions (por ora o Terraform roda na máquina local, dentro do WSL no Windows).
 
 ## 4. Restrições do ambiente
@@ -53,6 +54,8 @@ A infra atual foi montada com foco em aprendizado e é difícil de manter, corri
 - **RF-09 Imagens.** As imagens vivem no Docker Hub (repositórios públicos), com tags separadas por ambiente e por stack.
 - **RF-10 Deploy manual.** Uma nova versão de uma stack entra em um ambiente por workflow manual no GitHub Actions, no qual se escolhe o ambiente e a branch a construir, sem recriar a infra. Com a infra fora do ar, o workflow apenas publica a imagem.
 - **RF-11 Acesso.** O sistema é acessado por HTTP pelo DNS do ALB.
+- **RF-13 Dados analíticos (*Decidido*, 28/10/2026).** Duas Lambdas coletam os dados do `TEM-NA-FESTA-dataset` e gravam no bronze: a base da disciplina (POF/IBGE + Google Trends), toda semana, sem depender dos ambientes; e as tendências dos produtos do sistema, com o ambiente no ar; o Glue cataloga o dataset (e os logs) e o Athena os consulta, com o catálogo persistente entre ciclos (10).
+- **RF-14 Dicionário de dados (*Decidido*, 28/10/2026).** Banco, dataset e tabelas do Athena descritos num dicionário versionado e conferido automaticamente contra o schema (10, Parte B).
 - **RF-12 Saída para a internet.** Todos os nós do Swarm (web e app) alcançam a internet pela NAT, sem IP público (necessário para o envio de WhatsApp e para baixar imagens).
 
 ## 6. Requisitos não funcionais
@@ -69,7 +72,8 @@ A infra atual foi montada com foco em aprendizado e é difícil de manter, corri
 5. Dev e prod sobem de forma independente, com topologias diferentes definidas só por variáveis.
 6. Uma versão nova de uma stack, publicada pelo workflow de deploy com `env=dev`, entra no dev sem afetar o prod.
 7. Nenhum segredo gerado aparece em arquivos do repositório nem em logs.
+8. *(Decidido, spec 10.)* Uma coleta do dataset feita com o ambiente no ar é consultável no Athena, e continua consultável depois do `infra down`; o dicionário de dados cobre todas as tabelas e colunas e o `make dict` passa.
 
 ## 8. Rastreabilidade
-- Documentos que detalham os requisitos: 02 (arquitetura), 03 (variáveis), 04 (subida), 05 (segredos e dados), 06 (stacks), 07 (CI/CD), 08 (repositório e convenções), 09 (plano e validação).
+- Documentos que detalham os requisitos: 02 (arquitetura), 03 (variáveis), 04 (subida), 05 (segredos e dados), 06 (stacks), 07 (CI/CD), 08 (repositório e convenções), 09 (plano e validação), 10 (dados analíticos e dicionário de dados).
 - O índice (`00-indice.md`) lista o estado de cada documento e as pendências abertas.
