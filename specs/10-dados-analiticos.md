@@ -84,6 +84,7 @@ datasets/tendencias_produtos/{bruto,resumo,serie,rejeicoes}/env=<env>/data_colet
 ### 6.1 Glue Data Catalog
 - Banco **`tnf_bronze`**, com tabelas **declaradas no Terraform** (`aws_glue_catalog_table`) e **partition projection** (DA5): as partições (`data_coleta`, `env`, `source`, `year`, `month`, `day`) são calculadas pelo Athena a partir do caminho, então uma coleta nova aparece na consulta **sem crawler, sem `MSCK REPAIR` e sem nada rodando à toa**. O schema fica no código, revisado e testado offline (D3).
 - Tabelas: `pof_trends_resumo`, `pof_trends_serie`, `pof_trends_rejeicoes`, `tendencias_produtos_resumo`, `tendencias_produtos_serie`, `tendencias_produtos_rejeicoes`, `logs_docker`, `logs_auth` e `logs_systemd` (layout de 05, B4; campos de 02, seção 7.1). As de logs entram porque o layout B4 foi feito para isso e não custam nada parado.
+- *Na E10 (31/10/2026):* as colunas de cada tabela ficam em `analytics/tabelas.json`, lido pelo Terraform (`jsondecode`) e pelo `scripts/check-dictionary.sh`; assim o catálogo e o dicionário não divergem sem o `make dict` acusar.
 - Por que não crawler: ele precisaria rodar a cada coleta, inferiria tipos diferentes entre coletas e criaria tabelas com nomes derivados das pastas.
 
 ### 6.2 Athena

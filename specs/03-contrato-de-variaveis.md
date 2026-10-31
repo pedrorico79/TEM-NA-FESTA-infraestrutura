@@ -96,7 +96,17 @@ Distribuição em rodízio: o nó de índice `i` (começando em 0) fica na AZ `i
 | `bronze_bucket_name` | string | `null` | se `null`, segue a convenção `bucket-bronze-<id-da-conta>-<bronze_bucket_region>` |
 | `bronze_bucket_region` | string | `us-east-1` | região do bucket bronze (pode diferir de `region`) |
 
-*Decidido em 28/10/2026:* as variáveis da coleta do dataset (`datasets_enabled`, `dataset_repo_url`, `dataset_ref`, `dataset_schedule`) estão em 10, seção 7, e entram nesta tabela na E10 (09).
+**Dados analíticos (E10; 10, seção 7).** Valem para `envs/<env>`; a camada `analytics/` tem as suas em `analytics/variables.tf` (`dataset_ref`, `pof_trends_schedule`, `athena_bytes_scanned_cutoff`, `pandas_layer_version` e `lambda_reserved_concurrency`).
+
+| Variável | Tipo | Padrão | Regra |
+|---|---|---|---|
+| `datasets_enabled` | bool | `false` | liga o módulo `datasets` (a Lambda dos produtos do sistema) |
+| `dataset_repo_url` | string | `https://github.com/pedrorico79/TEM-NA-FESTA-dataset` | `https://` |
+| `dataset_ref` | string | `""` | **obrigatória com `datasets_enabled = true`** (D2); tag, nunca branch |
+| `dataset_schedule` | string | `null` | expressão do EventBridge; `null` não cria a regra (D2 recusa expressão inválida) |
+| `dataset_pandas_layer_version` | number | `17` | versão do layer público AWS SDK for pandas (Python 3.12), conferida na E10 |
+| `dataset_reserved_concurrency` | number | `1` | concorrência reservada da Lambda; `-1` não reserva (se o laboratório não permitir) |
+| `dataset_secrets` | map(string) | `{}` | `dataset_api_email` e `dataset_api_password`, vindos do `secrets.env` pelo `infra` (10, seção 8); exigidos só com `datasets_enabled = true` |
 
 ### 3.7 Segredos manuais (sensíveis)
 | Variável | Tipo | Padrão | Observação |
