@@ -129,9 +129,9 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | P2 | E0 | make trace (scripts/check-traceability.sh) | verificado |
 | P3 | E9 | manual: registros de cada etapa ao vivo nesta tabela e infra doctor sem avisos | pendente |
 | P4 | E0 | manual: revisão de 09, seção 2 (cada pré-requisito tem etapa de consumo) | verificado |
-| D1 | E10 | tests/analytics/lambda.tftest.hcl e tests/contract/datasets.tftest.hcl | pendente |
-| D2 | E10 | tests/contract/datasets.tftest.hcl e tests/analytics/lambda.tftest.hcl | pendente |
-| D3 | E10 | tests/analytics/catalogo.tftest.hcl | pendente |
+| D1 | E10 | analytics/tests/lambda.tftest.hcl e tests/contract/datasets.tftest.hcl | pendente |
+| D2 | E10 | tests/contract/datasets.tftest.hcl e analytics/tests/lambda.tftest.hcl | pendente |
+| D3 | E10 | analytics/tests/catalogo.tftest.hcl | pendente |
 | D4 | E10 | manual: no laboratório, infra analytics up duas vezes e infra down do ambiente | pendente |
 | D5 | E10 | manual: no laboratório, infra dataset run pof-trends (prova do Google Trends) | pendente |
 | D6 | E10 | manual: no laboratório, conferência descrita em 10, D6 | pendente |
