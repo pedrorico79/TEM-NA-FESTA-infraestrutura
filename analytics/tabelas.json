@@ -1,0 +1,78 @@
+{
+  "pof_trends_resumo": {
+    "produto_id": "int",
+    "produto_ibge": "string",
+    "termo_trends": "string",
+    "consumo_kg_sp": "double",
+    "popularidade_media": "double",
+    "popularidade_pico": "double",
+    "mes_pico": "int",
+    "fator_sazonalidade": "double",
+    "tipo_feriado_pico": "string",
+    "evento_associado": "string"
+  },
+  "pof_trends_serie": {
+    "produto_id": "int",
+    "mes_referencia": "string",
+    "popularidade": "double",
+    "mes_parcial": "boolean"
+  },
+  "pof_trends_rejeicoes": {
+    "produto_id": "int",
+    "produto": "string",
+    "regra": "string",
+    "motivo": "string",
+    "severidade": "string",
+    "data_ocorrencia": "string"
+  },
+  "tendencias_produtos_resumo": {
+    "produto_id": "int",
+    "produto_nome": "string",
+    "preco_venda": "double",
+    "popularidade_media": "double",
+    "popularidade_pico": "double",
+    "mes_pico": "int",
+    "fator_sazonalidade": "double",
+    "tipo_feriado_pico": "string",
+    "evento_associado": "string"
+  },
+  "tendencias_produtos_serie": {
+    "produto_id": "int",
+    "mes_referencia": "string",
+    "popularidade": "double",
+    "mes_parcial": "boolean"
+  },
+  "tendencias_produtos_rejeicoes": {
+    "produto_id": "int",
+    "produto": "string",
+    "regra": "string",
+    "motivo": "string",
+    "severidade": "string",
+    "data_ocorrencia": "string"
+  },
+  "logs_docker": {
+    "date": "string",
+    "log": "string",
+    "stream": "string",
+    "attrs": "map<string,string>",
+    "host": "string",
+    "role": "string",
+    "log_file": "string"
+  },
+  "logs_auth": {
+    "date": "string",
+    "ident": "string",
+    "pid": "string",
+    "message": "string",
+    "host": "string",
+    "role": "string"
+  },
+  "logs_systemd": {
+    "date": "string",
+    "message": "string",
+    "systemd_unit": "string",
+    "priority": "string",
+    "host": "string",
+    "role": "string"
+  }
+}

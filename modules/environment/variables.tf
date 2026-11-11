@@ -292,7 +292,7 @@ variable "dockerhub_namespace" {
 }
 
 variable "messaging_port" {
-  description = "Porta em que o microsserviço de mensageria recebe os eventos do backend. PENDENTE: vem da configuração do microsserviço."
+  description = "Porta em que o microsserviço de mensageria recebe os eventos do backend. Obrigatória com a mensageria ligada (T16); o microsserviço escuta na 8081."
   type        = number
   default     = null
 
@@ -435,6 +435,72 @@ variable "db_schema_path" {
   }
 }
 
+# Banco do microsserviço de mensageria (E8): segundo schema no mesmo RDS, com
+# o script do repositório do microsserviço fixado por tag (05, B5).
+
+variable "messaging_db_name" {
+  description = "Schema do microsserviço de mensageria no mesmo RDS. Precisa ser o mesmo que o script do schema cria."
+  type        = string
+  default     = "temnafesta_notificacao"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_]{0,63}$", var.messaging_db_name))
+    error_message = "messaging_db_name deve ter só letras minúsculas, dígitos e _, começando por letra (até 64 caracteres)."
+  }
+}
+
+variable "messaging_db_schema_repo_url" {
+  description = "URL do repositório público com o script SQL do banco do microsserviço. Exigida com a mensageria ligada."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || var.messaging_db_schema_repo_url != ""
+    error_message = "Com service_replicas.messaging = 1, preencha messaging_db_schema_repo_url em envs/${var.env}/terraform.tfvars (o repositório do microsserviço)."
+  }
+
+  validation {
+    condition     = var.messaging_db_schema_repo_url == "" || can(regex("^https://[^\\s]+$", var.messaging_db_schema_repo_url))
+    error_message = "messaging_db_schema_repo_url deve ser uma URL https:// do repositório público do microsserviço."
+  }
+}
+
+variable "messaging_db_schema_ref" {
+  description = "Tag ou commit do script do banco do microsserviço; nomes de branch são recusados. Exigida com a mensageria ligada."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || var.messaging_db_schema_ref != ""
+    error_message = "Com service_replicas.messaging = 1, preencha messaging_db_schema_ref em envs/${var.env}/terraform.tfvars (uma tag do repositório do microsserviço)."
+  }
+
+  validation {
+    condition     = !contains(["main", "master", "develop", "head"], lower(var.messaging_db_schema_ref))
+    error_message = "messaging_db_schema_ref = \"${var.messaging_db_schema_ref}\" é uma branch: informe uma tag ou um commit."
+  }
+}
+
+variable "messaging_db_schema_path" {
+  description = "Caminho do script SQL dentro do repositório do microsserviço. Exigida com a mensageria ligada."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || var.messaging_db_schema_path != ""
+    error_message = "Com service_replicas.messaging = 1, preencha messaging_db_schema_path em envs/${var.env}/terraform.tfvars (caminho do script SQL no repositório do microsserviço)."
+  }
+
+  validation {
+    condition     = var.messaging_db_schema_path == "" || can(regex("^[^/\\s][^\\s]*$", var.messaging_db_schema_path))
+    error_message = "messaging_db_schema_path deve ser um caminho relativo dentro do repositório, sem espaços e sem / no começo."
+  }
+}
+
 # --- 3.6 Acesso e dados compartilhados -------------------------------------------
 
 variable "admin_ssh_cidrs" {
@@ -488,12 +554,95 @@ variable "bronze_bucket_region" {
   }
 }
 
-# --- 3.7 Segredos manuais --------------------------------------------------------
+# --- 3.9 Dados analíticos (10, seção 7) --------------------------------------------
 
-variable "messaging_secrets" {
-  description = "Segredos manuais do microsserviço (vindos do secrets.env). Chaves PENDENTES; só exigidos com a mensageria ligada."
+variable "datasets_enabled" {
+  description = "Liga o módulo datasets: a Lambda de coleta das tendências dos produtos do sistema (10, seção 4)."
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+variable "dataset_repo_url" {
+  description = "Repositório público com os scripts de coleta (10, seção 3)."
+  type        = string
+  default     = "https://github.com/pedrorico79/TEM-NA-FESTA-dataset"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^https://[^\\s]+$", var.dataset_repo_url))
+    error_message = "dataset_repo_url deve ser uma URL https://."
+  }
+}
+
+variable "dataset_ref" {
+  description = "Tag do repositório do dataset empacotada na Lambda; exigida com datasets_enabled = true (10, seção 7)."
+  type        = string
+  default     = ""
+  nullable    = false
+
+  validation {
+    condition     = !var.datasets_enabled || var.dataset_ref != ""
+    error_message = "Com datasets_enabled = true, preencha dataset_ref em envs/${var.env}/terraform.tfvars com uma tag do repositório TEM-NA-FESTA-dataset (10, seção 7)."
+  }
+
+  validation {
+    condition     = !contains(["main", "master", "develop", "head"], lower(var.dataset_ref))
+    error_message = "dataset_ref = \"${var.dataset_ref}\" é uma branch: informe uma tag."
+  }
+}
+
+variable "dataset_schedule" {
+  description = "Agenda do EventBridge da coleta do ambiente (UTC); null não cria a regra (10, seção 4)."
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.dataset_schedule == null || can(regex("^(cron\\([^)]+\\)|rate\\([0-9]+ (minute|minutes|hour|hours|day|days)\\))$", var.dataset_schedule))
+    error_message = "dataset_schedule deve ser uma expressão do EventBridge, como cron(0 12 ? * MON *) ou rate(7 days), ou null."
+  }
+}
+
+variable "dataset_pandas_layer_version" {
+  description = "Versão do layer público AWS SDK for pandas para Python 3.12 (conferida na E10)."
+  type        = number
+  default     = 17
+  nullable    = false
+}
+
+variable "dataset_reserved_concurrency" {
+  description = "Concorrência reservada da Lambda de coleta; -1 não reserva (o laboratório pode não permitir)."
+  type        = number
+  default     = 1
+  nullable    = false
+}
+
+variable "dataset_secrets" {
+  description = "Email e senha do usuário de coleta (dataset_api_email e dataset_api_password), vindos do secrets.env pelo infra; exigidos só com datasets_enabled = true (10, seção 8)."
   type        = map(string)
   default     = {}
   nullable    = false
   sensitive   = true
+
+  validation {
+    condition = !var.datasets_enabled || alltrue([
+      for k in ["dataset_api_email", "dataset_api_password"] : try(nonsensitive(var.dataset_secrets[k] != ""), false)
+    ])
+    error_message = "Com datasets_enabled = true, faltam dataset_api_email e dataset_api_password no secrets.env (crie com 'infra init-secrets')."
+  }
+}
+
+# --- 3.7 Segredos manuais --------------------------------------------------------
+
+variable "messaging_secrets" {
+  description = "Segredos manuais do microsserviço (vindos do secrets.env pelo infra). Hoje só whapi_token, o token da API da Whapi; exigido só com a mensageria ligada."
+  type        = map(string)
+  default     = {}
+  nullable    = false
+  sensitive   = true
+
+  validation {
+    condition     = var.service_replicas.messaging == 0 || try(nonsensitive(var.messaging_secrets["whapi_token"] != ""), false)
+    error_message = "Com service_replicas.messaging = 1, falta whapi_token no secrets.env (crie com 'infra init-secrets')."
+  }
 }
