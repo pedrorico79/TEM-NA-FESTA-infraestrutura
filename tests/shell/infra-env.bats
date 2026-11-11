@@ -199,6 +199,7 @@ setup() {
 # --- Q8: segredos manuais com a mensageria ligada (05, A5) ---------------------------
 
 messaging_off() { sed -i "s/^  messaging = 1$/  messaging = 0/" "$REPO/envs/$1/terraform.tfvars"; }
+datasets_off() { sed -i "s/^datasets_enabled *= *true$/datasets_enabled = false/" "$REPO/envs/$1/terraform.tfvars"; }
 no_secrets() { mv "$REPO/secrets.env" "$BATS_TEST_TMPDIR/secrets.env.guardado"; }
 
 @test "Q8: mensageria ligada e sem secrets.env: up aborta com código 2 antes de qualquer chamada ao terraform" {
@@ -217,11 +218,21 @@ no_secrets() { mv "$REPO/secrets.env" "$BATS_TEST_TMPDIR/secrets.env.guardado"; 
   [ -z "$(terraform_calls)" ]
 }
 
-@test "Q8: mensageria desligada: up segue sem secrets.env" {
+@test "Q8: mensageria e coleta desligadas: up segue sem secrets.env" {
+  no_secrets
+  messaging_off dev
+  datasets_off dev
+  run "$REPO/infra" up dev --yes </dev/null
+  [ "$status" -eq 0 ]
+}
+
+@test "Q8: coleta ligada e sem secrets.env: up aborta com código 2 antes de qualquer chamada ao terraform" {
   no_secrets
   messaging_off dev
   run "$REPO/infra" up dev --yes </dev/null
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"a coleta (datasets_enabled) está ligada"*"não há secrets.env"* ]]
+  [ -z "$(terraform_calls)" ]
 }
 
 @test "Q8: o token chega ao terraform por TF_VAR_messaging_secrets, nunca na linha de comando" {

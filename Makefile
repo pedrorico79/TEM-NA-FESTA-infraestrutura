@@ -108,8 +108,8 @@ contract:
 # Valores de cada envs/<env>/terraform.tfvars contra o contrato (C10). As
 # variáveis sem padrão ainda em branco ("") recebem um marcador só para este
 # teste, porque o plan as exige apenas a partir da E4a (03, seção 3.8). O
-# segredo manual da mensageria (whapi_token) vem do secrets.env, nunca do
-# tfvars, então também recebe um marcador.
+# segredo manual da mensageria (whapi_token) e os da coleta (dataset_api_*)
+# vêm do secrets.env, nunca do tfvars, então também recebem um marcador.
 TFVARS_PLACEHOLDERS := dockerhub_namespace=marcador db_schema_repo_url=https://example.invalid/marcador.git db_schema_ref=marcador db_schema_path=marcador.sql
 
 contract-envs:
@@ -124,6 +124,7 @@ contract-envs:
 	    if grep -Eq "^[[:space:]]*$$k[[:space:]]*=[[:space:]]*\"\"" "$$f"; then args+=(-var="$$kv"); fi; \
 	  done; \
 	  args+=('-var=messaging_secrets={whapi_token="marcador"}'); \
+	  args+=('-var=dataset_secrets={dataset_api_email="marcador",dataset_api_password="marcador"}'); \
 	  echo "-- $$e"; \
 	  terraform -chdir="$(CONTRACT_TESTS)/envs" test -test-directory=. "$${args[@]}"; \
 	done

@@ -30,8 +30,9 @@ fake_setup() {
   cp "$REPO_SRC/bootstrap/terraform.tfvars" "$REPO/bootstrap/"
   cp "$REPO_SRC/envs/dev/terraform.tfvars" "$REPO/envs/dev/"
   cp "$REPO_SRC/envs/prod/terraform.tfvars" "$REPO/envs/prod/"
-  # A mensageria está ligada nos tfvars desde a E8: segredo manual de teste.
-  printf 'whapi_token=token-de-teste\n' >"$REPO/secrets.env"
+  # A mensageria está ligada nos tfvars desde a E8 e a coleta dos produtos do
+  # dev desde a E10: segredos manuais de teste.
+  printf 'whapi_token=token-de-teste\ndataset_api_email=coleta@teste.local\ndataset_api_password=senha-de-teste\n' >"$REPO/secrets.env"
 
   export FIX CALLS
   export AWS_STS=ok AWS_TOKEN="token-de-teste" TF_PLAN_RC=0

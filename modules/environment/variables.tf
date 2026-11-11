@@ -292,7 +292,7 @@ variable "dockerhub_namespace" {
 }
 
 variable "messaging_port" {
-  description = "Porta em que o microsserviço de mensageria recebe os eventos do backend. PENDENTE: vem da configuração do microsserviço."
+  description = "Porta em que o microsserviço de mensageria recebe os eventos do backend. Obrigatória com a mensageria ligada (T16); o microsserviço escuta na 8081."
   type        = number
   default     = null
 
