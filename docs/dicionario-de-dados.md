@@ -2,7 +2,7 @@
 
 Fonte única e versionada do dicionário de dados (spec 10, seção 10; DA6). Cobre as duas bases de tendências, o banco MySQL do sistema e as tabelas do Athena. O formato segue a "Especificação de Base de Dados" da disciplina (EBD 3.0, seção 3.1), estendido a todos os campos: **campo, tipo, tamanho, obrigatório, domínio e regra de validação, exemplo real**, mais **descrição, chave e sensibilidade**.
 
-O `make dict` (`scripts/check-dictionary.sh`) confere este arquivo com o script do banco na tag `db_schema_ref`, com as colunas das tabelas do Glue (`analytics/tabelas.json`) e com os oito campos com papel da EBD, e recusa tabela ou coluna faltando, sobrando ou com tipo diferente (D12). Por isso as tabelas abaixo seguem um formato fixo: o título de cada uma traz o nome entre crases e a primeira coluna traz o nome do campo entre crases.
+O `make dict` (`scripts/check-dictionary.sh`, na branch `develop`) confere este arquivo com o script do banco na tag `db_schema_ref`, com as colunas das tabelas do Glue (`analytics/tabelas.json`) e com os oito campos com papel da EBD, e recusa tabela ou coluna faltando, sobrando ou com tipo diferente (D12). Por isso as tabelas abaixo seguem um formato fixo: o título de cada uma traz o nome entre crases e a primeira coluna traz o nome do campo entre crases.
 
 **Sensibilidade:** *pessoal* é dado pessoal pela LGPD (nome, contato, endereço, email); *segredo* nunca aparece em exemplo nem sai do banco; *interna* é dado do negócio sem identificação de pessoa; *pública* vem de fonte pública (POF/IBGE, Google Trends).
 

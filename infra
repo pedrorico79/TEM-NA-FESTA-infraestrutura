@@ -35,7 +35,7 @@ Comandos (a etapa de 09 em que cada um chega está entre parênteses):
   dataset upload <alvo> <pasta>  plano B: envia ao bronze a coleta feita localmente (E10)
 
 Ambientes: dev, prod. Ajuda de um comando: infra <comando> --help
-Referência: specs/08-estrutura-do-repositorio.md, seção 5.
+Referência: specs/08-estrutura-do-repositorio.md, seção 5 (as specs ficam na branch develop).
 EOF
 }
 
@@ -953,7 +953,7 @@ cmd_dataset() {
 }
 
 not_yet() {
-  die "$EXIT_PRECONDITION" "o comando '$1' ainda não está implementado; ele chega na etapa $2 do plano (specs/09-plano-de-implementacao.md)."
+  die "$EXIT_PRECONDITION" "o comando '$1' ainda não está implementado; ele chega na etapa $2 do plano (specs/09-plano-de-implementacao.md, na branch develop)."
 }
 
 main() {

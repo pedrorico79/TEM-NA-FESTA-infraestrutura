@@ -16,6 +16,7 @@ TEM-NA-FESTA-infraestrutura/
 ├── secrets.env.example          # modelo dos segredos manuais, sem valores
 ├── .gitignore
 ├── .gitattributes               # força finais de linha LF nos scripts (seção 5.1)
+├── .main-ignore                 # caminhos só da develop, fora da main (seção 7)
 ├── bootstrap/                   # camada 1: bucket do state e bucket bronze (02, seção 2)
 │   ├── main.tf  variables.tf  outputs.tf  versions.tf
 │   └── terraform.tfvars
@@ -50,6 +51,7 @@ TEM-NA-FESTA-infraestrutura/
 │   ├── snapshots.sh             # listar, escolher (final mais recente ou `--snapshot`), criar o manual e podar (05, B2)
 │   ├── access.sh                # chave SSH recuperada do state e IP autorizado no bastion (5.6)
 │   ├── check-traceability.sh    # confere specs × tests/TRACEABILITY.md × etapas de 09 (seção 7)
+│   ├── publish-main.sh          # monta a main limpa a partir da develop (seção 7)
 │   └── wait-ready.sh            # acompanhar status e testar o ALB (04, seção 8)
 ├── tests/
 │   ├── contract/                # *.tftest.hcl: casos T1 a T17 (03, 06)
@@ -235,6 +237,7 @@ Você é o operador único, mas usa máquinas e redes diferentes. Sem tratamento
 
 ## 7. Convenções de Git e fluxo de trabalho
 - **Branches:** `main` protegida por convenção; mudanças por *pull request* a partir de branches curtas (`feat/…`, `fix/…`, `docs/…`, `chore/…`). O PR só entra com o `ci-infra` verde e com o `make check` passando na sua máquina. Como o GitHub só consegue **exigir** isso (*branch protection*) em alguns planos, a regra vale como **conduta** e passa a ser bloqueio de verdade se o plano permitir (*Decidido* em 10/10/2026, auditoria item 15; 07, 4.5).
+- **`develop` e `main` (*Decidido* em 11/11/2026, a pedido do autor):** a **`develop`** é a branch de desenvolvimento e tem o repositório inteiro (seção 2); é nela que entram os *pull requests* das branches curtas e é dela que partem. A **`main`** é a entrega para quem usa a infraestrutura: a mesma árvore **sem** os caminhos listados em `.main-ignore` (`specs/`, `tests/`, `analytics/tests/`, o `Makefile`, o `ci-infra.yml`, os scripts de conferência e o próprio `.main-ignore`). A `main` **não recebe commits diretos nem merges da `develop`**: o `scripts/publish-main.sh` monta, na branch `release/main`, um commit com a árvore da `develop` sem esses caminhos e com a `main` e a `develop` como pais, e a `main` avança pelo *pull request* dessa branch. O `ci-infra` roda nos *pull requests* e nos pushes da `develop`; onde este documento e o 07 dizem que o PR entra na `main` com o `ci-infra` verde, leia-se `develop`. O `README.md` é o mesmo nas duas e aponta para as specs da `develop` por endereço completo.
 - **Commits:** mensagens no padrão *Conventional Commits* (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`), em português ou inglês, mas consistentes.
 - **Specs são a fonte da verdade (SDD):** uma mudança de comportamento só entra com a **mudança correspondente em `specs/` no mesmo PR**. Um requisito sem teste ou um teste sem requisito é defeito.
 - **Rastreabilidade (*Decidido* em 10/10/2026, auditoria item 20):** os nomes dos testes carregam o ID do spec (por exemplo, `T5_managers_par`, `S3_replicas`), e `tests/TRACEABILITY.md` lista, **para cada ID dos specs, a etapa do plano (09) em que é verificado e o verificador**: teste automático ou procedimento manual no laboratório. A conferência é **automática**, pelo `scripts/check-traceability.sh` (`make trace`, que faz parte do `make check` e do CI):

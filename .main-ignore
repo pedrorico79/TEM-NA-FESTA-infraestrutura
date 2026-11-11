@@ -1,0 +1,11 @@
+# Caminhos que existem só na develop e ficam fora da main (08, seção 7).
+# Um por linha; o scripts/publish-main.sh os retira ao montar a main.
+specs/
+tests/
+analytics/tests/
+Makefile
+.github/workflows/ci-infra.yml
+scripts/check-traceability.sh
+scripts/check-dictionary.sh
+scripts/publish-main.sh
+.main-ignore

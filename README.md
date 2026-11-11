@@ -2,7 +2,7 @@
 
 Infraestrutura do **Tem Na Festa** na AWS (AWS Academy Learner Lab): Terraform em duas camadas, Docker Swarm em EC2 e um único comando, o `infra`, para criar, acompanhar e destruir os ambientes `dev` e `prod`.
 
-As **specs em [`specs/`](specs/)** são a fonte da verdade: comece por [`00-indice.md`](specs/00-indice.md). Toda mudança de comportamento entra primeiro no spec, no mesmo PR (08, seção 7).
+A branch **`main`** traz só o que é preciso para usar a infraestrutura. As specs, os testes e as ferramentas de desenvolvimento ficam na branch **[`develop`](https://github.com/pedrorico79/TEM-NA-FESTA-infraestrutura/tree/develop/)**; as referências deste guia no formato "(07, seção 4)" apontam para as [specs](https://github.com/pedrorico79/TEM-NA-FESTA-infraestrutura/tree/develop/specs) de lá.
 
 ## Como começar
 
@@ -14,9 +14,7 @@ No Windows, prepare antes o WSL e as ferramentas com o guia [`docs/primeiros-pas
 ./infra up dev        # cria o ambiente dev e espera ele ficar pronto
 ```
 
-Para destruir: `./infra down dev`. Todos os comandos estão em `./infra --help` e em [08, seção 5](specs/08-estrutura-do-repositorio.md).
-
-> **Situação atual:** código das etapas **E0 a E8** do plano ([09](specs/09-plano-de-implementacao.md)) pronto: rede, nós, Swarm, banco com snapshots, ALB, as quatro stacks (RabbitMQ, backend, microsserviço de notificações e frontend) e o deploy contínuo pelo Docker Hub. Os testes ao vivo de E6, E7 e E8 e o aceite final (E9) ainda vão ser rodados no laboratório; a situação de cada teste está em [`tests/TRACEABILITY.md`](tests/TRACEABILITY.md).
+Para destruir: `./infra down dev`. Todos os comandos estão em `./infra --help` e em [08, seção 5](https://github.com/pedrorico79/TEM-NA-FESTA-infraestrutura/blob/develop/specs/08-estrutura-do-repositorio.md).
 
 ## Guia de uso
 
@@ -98,16 +96,19 @@ O backend compara a senha com o hash BCrypt (`ROLE_ADMIN` vem do perfil `ADMIN`)
 
 ## Para quem desenvolve
 
+O desenvolvimento acontece na branch [`develop`](https://github.com/pedrorico79/TEM-NA-FESTA-infraestrutura/tree/develop/), que tem tudo o que a `main` tem e mais as specs (`specs/`, a fonte da verdade: comece por [`00-indice.md`](https://github.com/pedrorico79/TEM-NA-FESTA-infraestrutura/blob/develop/specs/00-indice.md)), os testes (`tests/`, com a rastreabilidade em [`tests/TRACEABILITY.md`](https://github.com/pedrorico79/TEM-NA-FESTA-infraestrutura/blob/develop/tests/TRACEABILITY.md)), o `Makefile` e o CI.
+
 ```bash
-make check            # formatação, lint, testes e rastreabilidade, como no CI
-make trace            # só a rastreabilidade dos testes (make trace STRICT=1 na E9)
+git switch develop
+make check                  # formatação, lint, testes e rastreabilidade, como no CI
+scripts/publish-main.sh     # monta a main limpa a partir da develop, na branch release/main
 ```
 
-O `make check` não usa credenciais da AWS e é o mesmo que roda no [`ci-infra.yml`](.github/workflows/ci-infra.yml). A tabela [`tests/TRACEABILITY.md`](tests/TRACEABILITY.md) liga cada ID de teste dos specs à etapa e ao verificador.
+Toda mudança entra por *pull request* na `develop`. A `main` nunca recebe commits diretos: ela é gerada pelo `scripts/publish-main.sh`, que copia a `develop` sem os caminhos listados em `.main-ignore`, e atualizada por um *pull request* da `release/main` (08, seção 7).
 
 ## Estrutura
 
-A árvore completa está em [08, seção 2](specs/08-estrutura-do-repositorio.md). Pastas ainda sem conteúdo têm um `README.md` dizendo em que etapa são preenchidas.
+A árvore completa está em [08, seção 2](https://github.com/pedrorico79/TEM-NA-FESTA-infraestrutura/blob/develop/specs/08-estrutura-do-repositorio.md).
 
 ## Conteúdo antigo
 
