@@ -1,7 +1,8 @@
 # D1, D2 e D10 (10, seção 11): o módulo datasets do ambiente, com o provedor
 # AWS simulado. A Lambda dos produtos do sistema só existe com
 # datasets_enabled = true, usa a LabRole e lê o email e a senha do SSM, nunca
-# das variáveis de ambiente.
+# das variáveis de ambiente. A senha de teste usa pontos
+# para não casar com a regra hashicorp-tf-password do gitleaks (ci-infra.yml).
 
 mock_provider "aws" {
   source = "./mocks"
@@ -38,7 +39,7 @@ run "D1_D10_lambda_do_ambiente" {
   variables {
     datasets_enabled = true
     dataset_ref      = "v1.0.0"
-    dataset_secrets  = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha-de-teste" }
+    dataset_secrets  = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha.de.teste" }
   }
 
   assert {
@@ -67,7 +68,7 @@ run "D1_D10_lambda_do_ambiente_no_modulo" {
     lambda_zip_path      = "/tmp/tnf-teste-inexistente.zip"
     pandas_layer_version = 17
     reserved_concurrency = 1
-    secrets              = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha-de-teste" }
+    secrets              = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha.de.teste" }
   }
 
   assert {
@@ -88,7 +89,7 @@ run "D1_D10_lambda_do_ambiente_no_modulo" {
 
   assert {
     condition = alltrue([
-      for v in values(aws_lambda_function.this.environment[0].variables) : !strcontains(v, "senha-de-teste") && !strcontains(v, "coleta@exemplo.invalid")
+      for v in values(aws_lambda_function.this.environment[0].variables) : !strcontains(v, "senha.de.teste") && !strcontains(v, "coleta@exemplo.invalid")
     ])
     error_message = "D10: o email e a senha da coleta não aparecem nas variáveis da função"
   }
@@ -116,7 +117,7 @@ run "D2_dataset_ref_em_branco_recusado" {
 
   variables {
     datasets_enabled = true
-    dataset_secrets  = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha-de-teste" }
+    dataset_secrets  = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha.de.teste" }
   }
 
   expect_failures = [var.dataset_ref]
@@ -133,7 +134,7 @@ run "D2_agenda_invalida_recusada" {
     datasets_enabled = true
     dataset_ref      = "v1.0.0"
     dataset_schedule = "toda segunda"
-    dataset_secrets  = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha-de-teste" }
+    dataset_secrets  = { dataset_api_email = "coleta@exemplo.invalid", dataset_api_password = "senha.de.teste" }
   }
 
   expect_failures = [var.dataset_schedule]
