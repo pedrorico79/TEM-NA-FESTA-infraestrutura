@@ -53,6 +53,16 @@ Sem o `secrets.env`, `infra plan` e `infra up` param antes de mudar qualquer coi
 - `./infra up dev --snapshot <id>` sobe um ambiente novo a partir de um snapshot escolhido.
 - Para mexer no banco à mão: `./infra ssh dev app-1` e, no nó, `tnf-db-shell`. São dois schemas: `tem_na_festa` (backend) e `temnafesta_notificacao` (microsserviço).
 
+### Teste de carga e bloqueio de login
+
+O backend bloqueia o login por 15 minutos depois de 5 falhas da mesma conta ou de 20 falhas de um mesmo IP (resposta 429). Numa carga que sai de uma máquina só, todos os usuários de teste têm o mesmo IP, então 20 senhas erradas bloqueiam todos. Para o ambiente de teste, ajuste os limites em `envs/<env>/terraform.tfvars` e rode `./infra up <env>` (o backend é reiniciado com os valores novos):
+
+```hcl
+login_limits = { max_por_ip = 0 }   # 0 desliga a regra por IP; os outros limites ficam nos padrões
+```
+
+Os campos são `max_por_conta` (5), `max_por_ip` (20), `janela_minutos` (15) e `bloqueio_minutos` (15). Depois do teste, apague a linha para voltar aos padrões.
+
 ### Quando algo dá errado
 
 | Sintoma | O que fazer |

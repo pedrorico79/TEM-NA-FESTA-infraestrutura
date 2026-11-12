@@ -19,6 +19,11 @@ services:
       PORT: "8080"
       SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
       MESSAGING_URL: "http://messaging:${MESSAGING_PORT}"
+      # Limites do bloqueio de login (03, seção 3.4); o padrão vale se o stack.env for antigo.
+      LOGIN_MAX_POR_CONTA: "${LOGIN_MAX_POR_CONTA:-5}"
+      LOGIN_MAX_POR_IP: "${LOGIN_MAX_POR_IP:-20}"
+      LOGIN_JANELA_MINUTOS: "${LOGIN_JANELA_MINUTOS:-15}"
+      LOGIN_BLOQUEIO_MINUTOS: "${LOGIN_BLOQUEIO_MINUTOS:-15}"
       SPRING_RABBITMQ_HOST: rabbitmq
       SPRING_RABBITMQ_USERNAME: "$${RABBITMQ_USER}"
       SPRING_RABBITMQ_PASSWORD: "$${RABBITMQ_PASSWORD}"

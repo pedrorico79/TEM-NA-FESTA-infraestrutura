@@ -295,6 +295,17 @@ variable "dataset_secrets" {
   sensitive   = true
 }
 
+variable "login_limits" {
+  description = "Ver modules/environment e 03."
+  type = object({
+    max_por_conta    = optional(number, 5)
+    max_por_ip       = optional(number, 20)
+    janela_minutos   = optional(number, 15)
+    bloqueio_minutos = optional(number, 15)
+  })
+  default = {}
+}
+
 module "environment" {
   source = "../../modules/environment"
 
@@ -316,6 +327,7 @@ module "environment" {
   root_volume_size_gb          = var.root_volume_size_gb
   ami_id                       = var.ami_id
   service_replicas             = var.service_replicas
+  login_limits                 = var.login_limits
   image_tags                   = var.image_tags
   dockerhub_namespace          = var.dockerhub_namespace
   messaging_port               = var.messaging_port

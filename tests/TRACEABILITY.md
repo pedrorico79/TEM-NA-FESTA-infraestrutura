@@ -26,6 +26,7 @@ Cada ID de teste das tabelas "Critérios de aceite" dos specs 03 a 09 tem aqui u
 | T15 | E1 | tests/contract/T15.tftest.hcl | verificado |
 | T16 | E1 | tests/contract/T16.tftest.hcl | verificado |
 | T17 | E6 | tests/contract/T17.tftest.hcl | verificado |
+| T18 | E6 | tests/contract/T18.tftest.hcl | verificado |
 | S1 | E6 | manual: no laboratório, infra up dev do zero até o ALB responder 200, com o tempo medido | pendente |
 | S2 | E6 | manual: no laboratório, infra up repetido sem mudanças não altera nada | pendente |
 | S3 | E6 | manual: no laboratório, backend de 1 para 2 réplicas com infra up | pendente |
