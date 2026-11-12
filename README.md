@@ -92,17 +92,16 @@ O script do schema é público e não traz nenhum usuário (05, B5). Num banco q
    tnf-db-shell
    ```
 
-3. No cliente MySQL, crie o perfil e o usuário, colando o hash do passo 1 (troque nome e e-mail):
+3. No cliente MySQL, crie o usuário. Troque `HASH_DO_PASSO_1` pelo hash inteiro do passo 1 (começa com `$2a$10$`), sem nenhum outro caractere em volta, e troque o nome e o e-mail:
 
    ```sql
-   INSERT INTO perfil (nome, descricao) SELECT 'ADMIN', 'Administrador'
-     WHERE NOT EXISTS (SELECT 1 FROM perfil WHERE nome = 'ADMIN');
+   USE tem_na_festa;
    INSERT INTO usuario (nome, email, senha, is_ativo, is_deletado, data_criacao, perfil_id)
-     SELECT 'Administrador', 'admin@exemplo.com', '<hash do passo 1>', TRUE, FALSE, NOW(), id
+     SELECT 'Administrador', 'admin@exemplo.com', 'HASH_DO_PASSO_1', TRUE, FALSE, NOW(), id
      FROM perfil WHERE nome = 'ADMIN';
    ```
 
-O backend compara a senha com o hash BCrypt (`ROLE_ADMIN` vem do perfil `ADMIN`). Não guarde a senha nem o hash no repositório.
+Os perfis (`ADMIN`, `ATENDENTE`, `CONFEITEIRO`) e os métodos de pagamento (`PIX`, `Cartão de Crédito`, `Dinheiro`) já vêm no script do banco a partir da tag `v1.0.1`. Se o `SELECT` acima não inserir nenhuma linha, o banco foi criado com uma tag mais antiga: confira com `SELECT * FROM perfil;`. O backend compara a senha com o hash BCrypt (`ROLE_ADMIN` vem do perfil `ADMIN`). Não guarde a senha nem o hash no repositório.
 
 ## Para quem desenvolve
 

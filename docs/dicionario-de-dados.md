@@ -248,6 +248,7 @@ erDiagram
 | `data_pedido` | DATETIME | 19 | sim | Horário de São Paulo | 2026-10-28 10:15:00 | Quando foi feito | | interna |
 | `data_entrega` | DATETIME | 19 | sim | Igual ou depois de `data_pedido` | 2026-11-01 16:00:00 | Entrega ou retirada | | interna |
 | `valor_total` | DECIMAL(10,2) | 10,2 | sim | Maior ou igual a zero | 245.00 | Valor do pedido | | interna |
+| `desconto_pedido` | DECIMAL(10,2) | 10,2 | sim | Padrão 0.00; maior ou igual a zero | 10.00 | Desconto aplicado ao pedido (script do banco v1.0.1) | | interna |
 | `taxa_entrega` | DECIMAL(10,2) | 10,2 | não | Padrão 0.00 | 15.00 | Taxa de entrega | | interna |
 | `observacao` | TEXT | 65535 | não | Texto livre | Escrever "Parabéns, Lia" | Observação | | pessoal |
 | `status_producao` | VARCHAR(50) | 50 | sim | RASCUNHO, AGUARDANDO_SINAL, CONFIRMADO, EM_PRODUCAO, PRONTO_PARA_ENTREGA, ENTREGUE ou CANCELADO (`StatusProducaoEnum` do backend; o banco guarda texto livre) | CONFIRMADO | Situação da produção | | interna |
@@ -309,6 +310,7 @@ erDiagram
 | `produto_id` | BIGINT | 19 | sim | Produto existente e ativo na criação | 12 | Produto | FK → produto.id | interna |
 | `quantidade` | BIGINT | 19 | sim | Maior que zero | 20 | Quantidade | | interna |
 | `preco_unitario` | DECIMAL(10,2) | 10,2 | sim | Maior ou igual a zero | 12.50 | Preço na hora do pedido | | interna |
+| `acrescimo` | DECIMAL(10,2) | 10,2 | sim | Padrão 0.00; maior ou igual a zero | 5.00 | Acréscimo cobrado no item (script do banco v1.0.1) | | interna |
 | `observacao_item` | TEXT | 65535 | não | Texto livre | Sem lactose | Observação do item | | interna |
 
 ### `tem_na_festa.lembrete`
@@ -321,4 +323,4 @@ erDiagram
 | `data_limite` | DATE | 10 | sim | Igual ou depois de `data_criacao` | 2026-11-05 | Prazo | | interna |
 | `usuario_id` | BIGINT | 19 | sim | Usuário existente | 2 | Dono do lembrete | FK → usuario.id | interna |
 
-**Colunas criadas pelo backend fora do script.** O backend roda com `ddl-auto=update` (05, A4) e acrescenta colunas que o script da tag não tem: `pedido.desconto_pedido` e `pedido.versao`, `item_pedido.acrescimo`, `pagamento.chave_idempotencia` e `pagamento.assinatura_requisicao`. Elas não entram na conferência automática, que segue o script; quando o script do `TEM-NA-FESTA-database` as incorporar numa tag nova, entram aqui junto com a mudança do `db_schema_ref`.
+**Colunas criadas pelo backend fora do script.** O backend roda com `ddl-auto=update` (05, A4) e acrescenta colunas que o script da tag não tem: `pedido.versao`, `pagamento.chave_idempotencia` e `pagamento.assinatura_requisicao` (`pedido.desconto_pedido` e `item_pedido.acrescimo` passaram para o script na tag `v1.0.1`). Elas não entram na conferência automática, que segue o script; quando o script do `TEM-NA-FESTA-database` as incorporar numa tag nova, entram aqui junto com a mudança do `db_schema_ref`.
