@@ -11,6 +11,8 @@ locals {
     rabbitmq_password = 32
     messaging_api_key = 48
     jwt_secret        = 64
+    # Usuário tnf_notificacao do banco do microsserviço (E8).
+    messaging_db_password = 32
   }
 
   # Nomes de usuário não são segredos aleatórios (05, A1), mas seguem o mesmo

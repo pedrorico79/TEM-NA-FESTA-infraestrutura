@@ -14,7 +14,12 @@
 # A senha nunca vai na linha de comando: arquivo de opções em /run, 600,
 # apagado ao fim (05, A6).
 #
-# Uso: db-init.sh <stack.env> <hash do manifesto>
+# Uso: db-init.sh <stack.env> <hash do manifesto> [perfil]
+# Perfil "app" (padrão): o schema do backend (DB_NAME, DB_SCHEMA_*, tnf_app).
+# Perfil "messaging" (E8): o schema do microsserviço no mesmo RDS
+# (MESSAGING_DB_NAME, MESSAGING_DB_SCHEMA_*, tnf_notificacao), com marcador e
+# senha próprios e só SELECT, INSERT, UPDATE e DELETE (o microsserviço não
+# altera tabelas: ddl-auto=none).
 # Saída (stdout, uma linha): "ok", "waiting <mensagem>" ou "failed <mensagem>".
 set -euo pipefail
 
@@ -23,9 +28,7 @@ source "${TNF_NODE_ENV:-/etc/tnf-node.env}"
 STACK_ENV="${1:?stack.env}"
 MANIFEST_HASH="${2:?hash do manifesto}"
 S3="s3://$TNF_ARTIFACTS_BUCKET"
-STATUS_KEY="status/db-init.json"
-APP_USER="tnf_app"
-APP_PRIVS="SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES"
+PROFILE="${3:-app}"
 CONNECT_WAIT=600 # até 10 min esperando o RDS aceitar conexão (04, seção 10)
 LOG="${TNF_DB_INIT_LOG:-/var/log/tnf-db-init.log}"
 
@@ -33,10 +36,34 @@ envval() { sed -n "s/^$1=//p" "$STACK_ENV" | tail -n 1; }
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >>"$LOG"; }
 
 DB_ENDPOINT="$(envval DB_ENDPOINT)"
-DB_NAME="$(envval DB_NAME)"
-REPO_URL="$(envval DB_SCHEMA_REPO_URL)"
-REF="$(envval DB_SCHEMA_REF)"
-SCRIPT_PATH="$(envval DB_SCHEMA_PATH)"
+case "$PROFILE" in
+  app)
+    STATUS_KEY="status/db-init.json"
+    APP_USER="tnf_app"
+    APP_PRIVS="SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES"
+    APP_SECRET="db_password"
+    VARS="db_schema_*"
+    DB_NAME="$(envval DB_NAME)"
+    REPO_URL="$(envval DB_SCHEMA_REPO_URL)"
+    REF="$(envval DB_SCHEMA_REF)"
+    SCRIPT_PATH="$(envval DB_SCHEMA_PATH)"
+    ;;
+  messaging)
+    STATUS_KEY="status/db-init-messaging.json"
+    APP_USER="$(envval MESSAGING_DB_USER)"
+    APP_PRIVS="SELECT, INSERT, UPDATE, DELETE"
+    APP_SECRET="messaging_db_password"
+    VARS="messaging_db_schema_*"
+    DB_NAME="$(envval MESSAGING_DB_NAME)"
+    REPO_URL="$(envval MESSAGING_DB_SCHEMA_REPO_URL)"
+    REF="$(envval MESSAGING_DB_SCHEMA_REF)"
+    SCRIPT_PATH="$(envval MESSAGING_DB_SCHEMA_PATH)"
+    ;;
+  *)
+    echo "failed perfil desconhecido do db-init: $PROFILE"
+    exit 0
+    ;;
+esac
 
 OPTS=""
 # Sem "&&" solto: no trap de saída, um teste falso viraria o código de saída.
@@ -128,21 +155,22 @@ apply_schema() {
     if ((n == 3)); then
       write_marker failed failed "não foi possível baixar o script do schema de $(raw_url) (referência $REF) depois de 3 tentativas"
       rm -f "$script" "$err"
-      echo "failed não foi possível baixar o script do schema ($(raw_url)). Confira db_schema_repo_url, db_schema_ref ($REF) e db_schema_path em envs/$TNF_ENV/terraform.tfvars e rode 'infra up $TNF_ENV'; o ambiente não precisa ser recriado."
+      echo "failed não foi possível baixar o script do schema $DB_NAME ($(raw_url)). Confira $VARS (referência $REF) em envs/$TNF_ENV/terraform.tfvars e rode 'infra up $TNF_ENV'; o ambiente não precisa ser recriado."
       return 1
     fi
     sleep $((n * 10))
   done
 
   write_marker started running ""
-  log "aplicando o script do schema ($REF)"
+  log "aplicando o script do schema $DB_NAME ($REF)"
+  sql -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
   if ! sql "$DB_NAME" <"$script" 2>"$err"; then
     local tail_err
     tail_err="$(tail -n 5 "$err" | tr '\n' ' ')"
     clear_schema
     write_marker failed failed "$tail_err"
     rm -f "$script" "$err"
-    echo "failed o script do schema ($REF) falhou: $tail_err O schema foi limpo. Publique uma versão corrigida, aponte db_schema_ref para a tag nova em envs/$TNF_ENV/terraform.tfvars e rode 'infra up $TNF_ENV'; o ambiente não precisa ser recriado."
+    echo "failed o script do schema $DB_NAME ($REF) falhou: $tail_err O schema foi limpo. Publique uma versão corrigida, aponte a referência de $VARS para a tag nova em envs/$TNF_ENV/terraform.tfvars e rode 'infra up $TNF_ENV'; o ambiente não precisa ser recriado."
     return 1
   fi
   rm -f "$script" "$err"
@@ -152,7 +180,7 @@ apply_schema() {
 configure_app_user() {
   local pw
   set +x
-  pw="$(aws ssm get-parameter --with-decryption --name "/tnf/$TNF_ENV/secrets/db_password" \
+  pw="$(aws ssm get-parameter --with-decryption --name "/tnf/$TNF_ENV/secrets/$APP_SECRET" \
     --query Parameter.Value --output text --region "$TNF_REGION")"
   # A senha vai pela entrada padrão do cliente, nunca na linha de comando.
   sql <<SQL
@@ -195,7 +223,7 @@ main() {
 
   if [[ "$M_SCHEMA" != applied && "$M_SCHEMA" != snapshot ]] && (($(table_count) == 0)); then
     if [[ -z "$REPO_URL" || -z "$REF" || -z "$SCRIPT_PATH" ]]; then
-      echo "failed o banco está vazio e db_schema_* estão em branco; preencha-as em envs/$TNF_ENV/terraform.tfvars e rode 'infra up $TNF_ENV'."
+      echo "failed o schema $DB_NAME está vazio e $VARS estão em branco; preencha-as em envs/$TNF_ENV/terraform.tfvars e rode 'infra up $TNF_ENV'."
       return 0
     fi
     apply_schema || return 0
