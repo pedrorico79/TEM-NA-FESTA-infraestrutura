@@ -1,0 +1,46 @@
+# Stack tnf-web (06, seções 2 e 6.1): o frontend (nginx com o build do React)
+# nos nós web, publicando a porta 80 em modo ingress para o ALB. Sobe por
+# último porque o nginx resolve backend-som ao iniciar.
+version: "3.8"
+
+services:
+  frontend:
+    image: ${IMAGE_FRONTEND}
+    ports:
+      - target: 80
+        published: 80
+        protocol: tcp
+        mode: ingress
+    networks:
+      - tnf-net
+    # 127.0.0.1 e não localhost: o wget do Alpine pode resolver localhost para
+    # IPv6, e o nginx escuta só em IPv4 (06, seção 6.1).
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1/ || curl -fsS -o /dev/null http://127.0.0.1/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      replicas: ${REPLICAS_FRONTEND}
+      placement:
+        constraints:
+          - node.labels.tier == web
+        max_replicas_per_node: 1
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 128M
+
+networks:
+  tnf-net:
+    external: true

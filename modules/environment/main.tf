@@ -1,7 +1,7 @@
 # Módulo de composição do ambiente (08, seção 3). Nesta etapa (E1) ele
 # valida o contrato de 03 e calcula os valores derivados (03, seção 5); os
 # módulos de rede, segurança, nós, banco, segredos, artefatos e ALB entram a
-# partir da E3, ligados aqui.
+# partir da E3 (o ALB na E6), ligados aqui.
 
 # --- AZs ------------------------------------------------------------------------
 # Sem az_names, usa as primeiras AZs disponíveis (em ordem alfabética) que
@@ -124,7 +124,8 @@ locals {
 # quando o banco nasce de um snapshot.
 
 locals {
-  db_app_username = "tnf_app" # nome fixo do usuário da aplicação (05, A1)
+  db_app_username       = "tnf_app"         # nome fixo do usuário da aplicação (05, A1)
+  db_messaging_username = "tnf_notificacao" # usuário do microsserviço no schema dele (E8)
 
   restoring_from_snapshot = var.db_snapshot_identifier != null
 
@@ -139,11 +140,24 @@ locals {
     DB_NAME            = var.db_name
     DB_USER            = local.db_app_username
     MESSAGING_PORT     = var.messaging_port == null ? "" : tostring(var.messaging_port)
-    EXPECTED_NODES     = join(",", local.expected_nodes)
-    MANAGER_COUNT      = tostring(var.manager_count)
-    DB_SCHEMA_REPO_URL = local.restoring_from_snapshot ? "" : var.db_schema_repo_url
-    DB_SCHEMA_REF      = local.restoring_from_snapshot ? "" : var.db_schema_ref
-    DB_SCHEMA_PATH     = local.restoring_from_snapshot ? "" : var.db_schema_path
+    # Limites de login do backend (03, seção 3.4): sempre preenchidos.
+    LOGIN_MAX_POR_CONTA    = tostring(var.login_limits.max_por_conta)
+    LOGIN_MAX_POR_IP       = tostring(var.login_limits.max_por_ip)
+    LOGIN_JANELA_MINUTOS   = tostring(var.login_limits.janela_minutos)
+    LOGIN_BLOQUEIO_MINUTOS = tostring(var.login_limits.bloqueio_minutos)
+    EXPECTED_NODES         = join(",", local.expected_nodes)
+    MANAGER_COUNT          = tostring(var.manager_count)
+    DB_SCHEMA_REPO_URL     = local.restoring_from_snapshot ? "" : var.db_schema_repo_url
+    DB_SCHEMA_REF          = local.restoring_from_snapshot ? "" : var.db_schema_ref
+    DB_SCHEMA_PATH         = local.restoring_from_snapshot ? "" : var.db_schema_path
+    # Banco do microsserviço (E8): sempre preenchidas com a mensageria ligada,
+    # porque um snapshot de antes da E8 não tem esse schema; o db-init só roda
+    # o script se o schema estiver vazio.
+    MESSAGING_DB_NAME            = var.messaging_db_name
+    MESSAGING_DB_USER            = local.db_messaging_username
+    MESSAGING_DB_SCHEMA_REPO_URL = var.messaging_db_schema_repo_url
+    MESSAGING_DB_SCHEMA_REF      = var.messaging_db_schema_ref
+    MESSAGING_DB_SCHEMA_PATH     = var.messaging_db_schema_path
   }
 
   ssh_private_key_path = coalesce(var.ssh_private_key_path, abspath("${path.module}/../../.keys/${var.env}.pem"))
@@ -237,4 +251,31 @@ module "compute" {
   # EC2 depois das rotas da NAT (04, seção 4); os scripts no bucket chegam por
   # node_objects. O RDS cria em paralelo: só o READY espera por ele.
   depends_on = [module.network, module.secrets]
+}
+
+module "datasets" {
+  source = "../datasets"
+  count  = var.datasets_enabled ? 1 : 0
+
+  env                  = var.env
+  region               = var.region
+  bronze_bucket        = local.bronze_bucket_name
+  api_url              = "http://${module.alb.dns_name}/api/v1"
+  dataset_repo_url     = var.dataset_repo_url
+  dataset_ref          = var.dataset_ref
+  lambda_zip_path      = "${local.repo_root}/.infra/build/tendencias-${var.dataset_ref}.zip"
+  schedule             = var.dataset_schedule
+  pandas_layer_version = var.dataset_pandas_layer_version
+  reserved_concurrency = var.dataset_reserved_concurrency
+  secrets              = var.dataset_secrets
+}
+
+module "alb" {
+  source = "../alb"
+
+  name_prefix       = local.prefix
+  vpc_id            = module.network.vpc_id
+  subnet_ids        = module.network.subnet_ids["public"]
+  security_group_id = module.security.security_group_ids["alb"]
+  web_instance_ids  = { for k, n in module.compute.nodes : k => n.id if startswith(k, "web-") }
 }
