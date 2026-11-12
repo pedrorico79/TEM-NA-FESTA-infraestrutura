@@ -48,9 +48,11 @@ check() {
     if [[ "$state" == failed ]]; then
       FAILED_MSG="o nó $host falhou na etapa $step: $msg. Veja /var/log/tnf-bootstrap.log no nó (infra ssh $ENV_NAME ${host##*-"$ENV_NAME"-})."
     elif [[ -z "$doc" && "$ONCE" -eq 0 ]] && (($(date +%s) - start >= SILENT_MAX)); then
-      # Sem nenhum status: o nó não conseguiu nem instalar o AWS CLI, em geral
-      # porque não tem saída para a internet (rota da NAT; 04, S6).
-      FAILED_MSG="o nó $host não deu nenhum sinal em $((SILENT_MAX / 60)) minutos: provavelmente não tem saída para a internet (confira a rota da NAT da subnet dele) e não conseguiu instalar o AWS CLI. Veja /var/log/tnf-bootstrap.log no nó."
+      # Sem nenhum status: o nó não conseguiu instalar o AWS CLI ou baixar o
+      # node-bootstrap.sh. Pode ser falta de rota (NAT; 04, S6), mas também uma
+      # fonte de download fora do ar (a loja do snap em 12/11/2026): o console
+      # da instância mostra qual foi.
+      FAILED_MSG="o nó $host não deu nenhum sinal em $((SILENT_MAX / 60)) minutos: não conseguiu instalar o AWS CLI ou baixar o node-bootstrap.sh do bucket. Veja o motivo no console da instância (aws ec2 get-console-output --latest --output text --instance-id <id>) ou em /var/log/tnf-bootstrap.log no nó; se o erro for de conexão, confira também a rota da NAT da subnet dele."
     fi
     [[ "$state" == "$want" ]] || READY_ALL=0
   done
