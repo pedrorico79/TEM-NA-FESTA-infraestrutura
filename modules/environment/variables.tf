@@ -291,6 +291,28 @@ variable "dockerhub_namespace" {
   }
 }
 
+variable "login_limits" {
+  description = "Limites do bloqueio de login do backend (03, seção 3.4): falhas por conta (mesmo e-mail e IP) e por IP, em uma janela, e a duração do bloqueio. Os padrões são os do backend; 0 em max_por_conta ou max_por_ip desliga aquela regra (útil num teste de carga a partir de uma máquina só)."
+  type = object({
+    max_por_conta    = optional(number, 5)
+    max_por_ip       = optional(number, 20)
+    janela_minutos   = optional(number, 15)
+    bloqueio_minutos = optional(number, 15)
+  })
+  default  = {}
+  nullable = false
+
+  validation {
+    condition     = alltrue([for v in [var.login_limits.max_por_conta, var.login_limits.max_por_ip] : v >= 0 && floor(v) == v])
+    error_message = "login_limits.max_por_conta e login_limits.max_por_ip precisam ser inteiros maiores ou iguais a 0 (0 desliga a regra)."
+  }
+
+  validation {
+    condition     = alltrue([for v in [var.login_limits.janela_minutos, var.login_limits.bloqueio_minutos] : v >= 1 && floor(v) == v])
+    error_message = "login_limits.janela_minutos e login_limits.bloqueio_minutos precisam ser inteiros maiores ou iguais a 1."
+  }
+}
+
 variable "messaging_port" {
   description = "Porta em que o microsserviço de mensageria recebe os eventos do backend. Obrigatória com a mensageria ligada (T16); o microsserviço escuta na 8081."
   type        = number
