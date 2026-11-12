@@ -20,4 +20,4 @@
 - A etiqueta do ambiente é movida por cópia do manifesto no registro (`crane tag`), então `:<env>` e `:sha-<7>` têm o mesmo digest.
 - As consultas ao registro são só de manifesto e não consomem a cota de baixadas.
 
-Os passos da trava de prod e dos `VITE_*` são testados fora do GitHub em `tests/shell/deploy-template.bats`.
+Os passos da trava de prod e dos `VITE_*` são testados fora do GitHub em `tests/shell/deploy-template.bats`, na branch `develop`.

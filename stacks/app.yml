@@ -1,0 +1,84 @@
+# Stack tnf-app, parte do backend (06, seções 2 e 6.2). A mensageria fica em
+# app-messaging.yml e só é acrescentada pelo líder com REPLICAS_MESSAGING > 0.
+# Valores por substituição a partir do stack.env efetivo gerado pelo líder,
+# com a imagem fixada por digest (06, seção 4).
+#
+# Segredos: cada um vira um arquivo em /run/secrets, lido pelo configtree do
+# Spring como propriedade de mesmo nome (05, A3). O backend publica os eventos
+# de pedido no RabbitMQ (spring-boot-starter-amqp): SPRING_RABBITMQ_* apontam
+# para o serviço rabbitmq e para as propriedades vindas dos segredos, sem pôr
+# o valor em variável de ambiente (R6).
+version: "3.8"
+
+services:
+  backend-som:
+    image: ${IMAGE_BACKEND}
+    environment:
+      DB_URL: "jdbc:mysql://${DB_ENDPOINT}:3306/${DB_NAME}?allowPublicKeyRetrieval=true&useSSL=false&serverTimezone=UTC"
+      DB_USER: ${DB_USER}
+      PORT: "8080"
+      SPRING_CONFIG_IMPORT: "optional:configtree:/run/secrets/"
+      MESSAGING_URL: "http://messaging:${MESSAGING_PORT}"
+      SPRING_RABBITMQ_HOST: rabbitmq
+      SPRING_RABBITMQ_USERNAME: "$${RABBITMQ_USER}"
+      SPRING_RABBITMQ_PASSWORD: "$${RABBITMQ_PASSWORD}"
+      JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=70"
+    secrets:
+      - source: tnf_db_password
+        target: DB_PASSWORD
+      - source: tnf_jwt_secret
+        target: JWT_SECRET
+      - source: tnf_messaging_api_key
+        target: MESSAGING_API_KEY
+      - source: tnf_rabbitmq_user
+        target: RABBITMQ_USER
+      - source: tnf_rabbitmq_password
+        target: RABBITMQ_PASSWORD
+    networks:
+      tnf-net:
+        aliases:
+          - backend-som
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/api/v1/health || curl -fsS -o /dev/null http://127.0.0.1:8080/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 90s
+    deploy:
+      replicas: ${REPLICAS_BACKEND}
+      placement:
+        constraints:
+          - node.labels.tier == app
+        max_replicas_per_node: 1
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+        monitor: 60s
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+      restart_policy:
+        condition: any
+        delay: 5s
+      resources:
+        limits:
+          memory: 768M
+        reservations:
+          memory: 512M
+
+networks:
+  tnf-net:
+    external: true
+
+secrets:
+  tnf_db_password:
+    external: true
+  tnf_jwt_secret:
+    external: true
+  tnf_messaging_api_key:
+    external: true
+  tnf_rabbitmq_user:
+    external: true
+  tnf_rabbitmq_password:
+    external: true
