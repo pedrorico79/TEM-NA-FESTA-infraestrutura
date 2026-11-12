@@ -59,9 +59,21 @@ if [[ "$tree" == "$(git rev-parse "$dst^{tree}")" ]]; then
   exit 0
 fi
 
+# A publicação anterior (local ou no remoto) entra como pai, para o push da
+# branch ser sempre um avanço simples, sem forçar nada.
+prev="$(git rev-parse -q --verify "refs/heads/$BRANCH^{commit}" || git rev-parse -q --verify "origin/$BRANCH^{commit}" || true)"
+parents=(-p "$dst" -p "$src")
+if [[ -n "$prev" ]]; then
+  if [[ "$tree" == "$(git rev-parse "$prev^{tree}")" ]]; then
+    echo "Nada a publicar: $BRANCH já tem o conteúdo de $SOURCE sem os caminhos de $IGNORE_FILE."
+    exit 0
+  fi
+  parents+=(-p "$prev")
+fi
+
 short="$(git rev-parse --short "$src")"
-commit="$(git commit-tree "$tree" -p "$dst" -p "$src" -m "chore: publica a main a partir da develop ($short)")"
+commit="$(git commit-tree "$tree" "${parents[@]}" -m "chore: publica a main a partir da develop ($short)")"
 git update-ref "refs/heads/$BRANCH" "$commit"
 
 echo "Branch $BRANCH atualizada ($(git rev-parse --short "$commit")): $SOURCE ($short) sem os caminhos de $IGNORE_FILE."
-echo "Envie com 'git push -f origin $BRANCH' e abra o pull request de $BRANCH para a main."
+echo "Envie com 'git push origin $BRANCH' (um avanço simples) e abra ou atualize o pull request de $BRANCH para a main."

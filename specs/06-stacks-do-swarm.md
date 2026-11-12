@@ -11,7 +11,7 @@ Define **o que roda dentro do Swarm**: as stacks, os serviços, a rede, o posici
 | Ordem | Stack | Serviços | Onde roda |
 |---|---|---|---|
 | 1 | `tnf-rabbitmq` | `rabbitmq` | 1 nó `app` com o rótulo `rabbitmq=true` |
-| 2 | `tnf-app` | `backend-som` e, **quando ligada**, `messaging` (PENDENTE) | nós `app`; a `messaging` só no nó com o rótulo `messaging=true` (o `app-1`, 6.4) |
+| 2 | `tnf-app` | `backend-som` e, **quando ligada**, `messaging` | nós `app`; a `messaging` só no nó com o rótulo `messaging=true` (o `app-1`, 6.4) |
 | 3 | `tnf-web` | `frontend` | nós `web` |
 
 - Uma stack por conjunto que muda em ritmo próprio: dá para atualizar o frontend sem encostar no backend (RF-09, tags separadas por stack).
@@ -42,7 +42,7 @@ cliente → ALB → frontend (nginx) → backend-som ──(publica eventos)─�
 
 ## 4. Como os compose files recebem valores (*Decidido*)
 - Os compose files são **estáticos** (iguais em dev e prod, versionados em `stacks/`). Os valores que mudam por ambiente entram por **substituição de variáveis** do `docker stack deploy`, lidas de um arquivo de valores.
-- O Terraform grava no bucket de artefatos o **`stack.env`**, sem segredos: `IMAGE_FRONTEND`, `IMAGE_BACKEND`, `IMAGE_MESSAGING` (imagens iniciais, de `image_tags`), `REPLICAS_FRONTEND`, `REPLICAS_BACKEND`, `REPLICAS_MESSAGING` (`0` = desligada), `DB_ENDPOINT` (endereço do RDS), `DB_NAME`, `DB_USER`, `MESSAGING_PORT` (valor **PENDENTE**, vem da configuração do microsserviço; vazio enquanto a mensageria estiver desligada).
+- O Terraform grava no bucket de artefatos o **`stack.env`**, sem segredos: `IMAGE_FRONTEND`, `IMAGE_BACKEND`, `IMAGE_MESSAGING` (imagens iniciais, de `image_tags`), `REPLICAS_FRONTEND`, `REPLICAS_BACKEND`, `REPLICAS_MESSAGING` (`0` = desligada), `DB_ENDPOINT` (endereço do RDS), `DB_NAME`, `DB_USER`, `MESSAGING_PORT` (8081, a porta do microsserviço; vazio enquanto a mensageria estiver desligada).
 - **Cinco valores não são usados pelos compose files**; servem ao líder e ao `infra` (auditoria itens 11 e 22): `EXPECTED_NODES` (lista, separada por vírgulas, dos hostnames dos nós do Swarm que devem existir, sem o bastion; 03, seção 5) e `MANAGER_COUNT` (quantos desses nós são managers). O líder usa o primeiro para esperar os nós e remover os que saíram do desenho (04, seção 7, passo 1); o `infra up` usa o segundo para recusar a mudança de `manager_count` com o ambiente no ar (03, seção 3.2; 08, G22). Os outros três, `DB_SCHEMA_REPO_URL`, `DB_SCHEMA_REF` e `DB_SCHEMA_PATH` (vindos de `db_schema_*`, 03, seção 3.5), dizem ao `db-init` do líder qual script do schema baixar (04, seção 7, passo 6; 05, B5); ficam em branco quando o banco nasce de um snapshot. Como o compose não referencia nenhum deles, o `docker stack deploy` os ignora.
 - O **líder gera localmente** o arquivo efetivo de cada deploy: copia o `stack.env` e troca as imagens dos serviços ligados por referências fixadas por *digest* (`<repo>:<tag>@sha256:…`), resolvidas no Docker Hub (07, seção 5.2). Por isso o compose não usa `--resolve-image` nem `--with-registry-auth` (repositórios públicos).
 - O manifesto de 04 (hash do conjunto) cobre também `stack.env`, então mudar réplicas, tag ou a contagem de nós e rodar `infra up` continua refazendo o deploy sozinho.
@@ -58,8 +58,8 @@ Cada segredo tem três nomes ao longo do caminho:
 | `jwt_secret` | `tnf_jwt_secret` | `/run/secrets/JWT_SECRET` | backend |
 | `rabbitmq_user` | `tnf_rabbitmq_user` | RabbitMQ: `/run/secrets/rabbitmq_user`; backend: `/run/secrets/RABBITMQ_USER` | RabbitMQ, backend e microsserviço |
 | `rabbitmq_password` | `tnf_rabbitmq_password` | RabbitMQ: `/run/secrets/rabbitmq_password`; backend: `/run/secrets/RABBITMQ_PASSWORD` | RabbitMQ, backend e microsserviço |
-| `messaging_api_key` | `tnf_messaging_api_key` | backend: `/run/secrets/MESSAGING_API_KEY`; microsserviço: nome **PENDENTE** | backend e microsserviço |
-| *(chaves de `messaging_secrets`)* | `tnf_<chave>` | **PENDENTE** | microsserviço (só existem com a mensageria ligada) |
+| `messaging_api_key` | `tnf_messaging_api_key` | backend: `/run/secrets/MESSAGING_API_KEY`; microsserviço: não usa (ele não valida a chave) | backend e microsserviço |
+| *(chaves de `messaging_secrets`)* | `tnf_<chave>` | microsserviço: `/run/secrets/WHAPI_TOKEN` (`whapi_token`) | microsserviço (só existem com a mensageria ligada) |
 
 - O `target` do segredo no compose é o nome do arquivo em maiúsculas para o backend, para o `configtree` do Spring (05, A3) criar as propriedades `DB_PASSWORD`, `JWT_SECRET` e `MESSAGING_API_KEY`, no mesmo estilo dos placeholders atuais.
 - **Cada serviço monta só os segredos de que precisa.** Como o backend lê *todos* os arquivos de `/run/secrets/` como propriedades, não se monta nele nada que não seja dele.
@@ -110,7 +110,7 @@ Cada segredo tem três nomes ao longo do caminho:
 | Volume | volume local nomeado `rabbitmq_data` em `/var/lib/rabbitmq` |
 | Porta | só `5672` dentro da rede `tnf-net`; sem publicação. Usada pelo backend (publica) e pelo microsserviço (consome) |
 | Usuário e senha | lidos dos segredos Docker pelo `entrypoint` do serviço, que exporta `RABBITMQ_DEFAULT_USER` e `RABBITMQ_DEFAULT_PASS` só para o processo do RabbitMQ (não aparecem no `docker inspect`, R6) |
-| Filas e permissões | arquivo `definitions.json` carregado na inicialização (`load_definitions` em `rabbitmq.conf`), entregue como *config* do Docker, **a partir da E8** (*Decidido* em 26/10/2026): carregado no boot, ele faz o RabbitMQ não criar o usuário padrão, então entra junto com a configuração do microsserviço. Até lá, a troca e a fila do backend são declaradas pelo próprio Spring AMQP. Lista de filas **PENDENTE** |
+| Filas e permissões | arquivo `definitions.json` carregado na inicialização (`load_definitions` em `rabbitmq.conf`), entregue como *config* do Docker, **a partir da E8** (*Decidido* em 26/10/2026): carregado no boot, ele faz o RabbitMQ não criar o usuário padrão, então entra junto com a configuração do microsserviço. Até lá, a troca e a fila do backend são declaradas pelo próprio Spring AMQP. A fila `queue_pedido` e a troca ligada a ela são declaradas pelo próprio microsserviço, e o `definitions.json` foi descartado na E8 |
 | Saúde | `rabbitmq-diagnostics -q ping`; intervalo 30 s, período de partida 60 s |
 | Atualização | `stop-first` (instância única com volume) |
 | Limite de memória | 512 MB |
@@ -136,7 +136,7 @@ Configurado na E8 (28/10/2026), em `stacks/app-messaging.yml` (seção 2). O mic
 
 #### 6.4.1 Sessão e pareamento do WhatsApp (*Decidido* em 10/10/2026, auditoria item 19)
 **Situação na E8 (28/10/2026): caso B.** O microsserviço usa a Whapi com token, sem sessão em disco: não há pareamento, QR code nem volume. R17 e Q23 ficam como não aplicáveis nesta entrega, e o restante desta seção só vale se a forma de autenticação mudar.
-**O problema.** O "nível 4" (01, RF-02) promete um ambiente que sobe sem intervenção. Um microsserviço de WhatsApp que usa uma biblioteca com sessão (por exemplo `whatsapp-web.js` ou Baileys) exige que alguém **pareie** o aparelho uma vez: escanear um QR code (ou digitar um código de pareamento) com o celular. Depois do pareamento, a sessão fica em arquivos no disco. Se o microsserviço usa a API oficial da Meta (token), não há pareamento. Qual dos dois é o caso depende da configuração do microsserviço (**PENDENTE**); a regra abaixo cobre os dois.
+**O problema.** O "nível 4" (01, RF-02) promete um ambiente que sobe sem intervenção. Um microsserviço de WhatsApp que usa uma biblioteca com sessão (por exemplo `whatsapp-web.js` ou Baileys) exige que alguém **pareie** o aparelho uma vez: escanear um QR code (ou digitar um código de pareamento) com o celular. Depois do pareamento, a sessão fica em arquivos no disco. Se o microsserviço usa a API oficial da Meta (token), não há pareamento. O microsserviço usa a API da Whapi com um token (caso B abaixo: sem pareamento, sem volume; *Decidido* na E8); a regra abaixo cobre os três casos.
 
 **Regra geral.** O nível 4 vale **até o serviço estar de pé**. O pareamento do WhatsApp, quando existe, é uma **exceção declarada**: um passo manual, único por ambiente novo, documentado no README (E8, 09) e **não automatizado**. O `converge.json` e o `infra status` **não sabem** se o WhatsApp está pareado: `ready` significa que as réplicas estão de pé, não que há mensagens saindo.
 
@@ -150,7 +150,7 @@ Configurado na E8 (28/10/2026), em `stacks/app-messaging.yml` (seção 2). O mic
 1. `infra ssh <env> app-1` (02, seção 8).
 2. No nó: `docker service logs -f tnf-app_messaging`.
 3. No celular: WhatsApp → Aparelhos conectados → Conectar um aparelho. Escanear o QR code que o microsserviço imprime no log (ele se renova sozinho em poucos segundos), ou digitar o código de pareamento, se o microsserviço oferecer essa forma.
-4. Esperar a mensagem de "conectado" nos logs (texto exato **PENDENTE**, vem da configuração do microsserviço).
+4. Esperar a mensagem de "conectado" nos logs (só no caso A; o microsserviço atual usa o caso B e não tem esse passo).
 5. Depois disso, reiniciar, atualizar ou reagendar o serviço **não** pede novo pareamento (a sessão está no volume).
 
 **Quando o pareamento precisa ser refeito.**
@@ -159,14 +159,14 @@ Configurado na E8 (28/10/2026), em `stacks/app-messaging.yml` (seção 2). O mic
 - A sessão é encerrada pelo celular (desconectar o aparelho) ou invalidada pelo WhatsApp.
 - No celular, os aparelhos conectados de ambientes destruídos continuam listados até expirarem ou serem removidos à mão; remova-os para não acumular.
 
-**O que acontece antes do pareamento.** O microsserviço fica de pé, mas não envia. O backend não é afetado (6.5: falha do aviso não derruba a operação principal). O destino dos eventos recebidos nesse período depende do microsserviço (**PENDENTE**); a recomendação é que fiquem na fila do RabbitMQ até o envio ser possível.
+**O que acontece antes do pareamento.** O microsserviço fica de pé, mas não envia. O backend não é afetado (6.5: falha do aviso não derruba a operação principal). O destino dos eventos recebidos nesse período depende do microsserviço; a recomendação é que fiquem na fila do RabbitMQ até o envio ser possível.
 
 **Segurança.**
 - Os arquivos da sessão equivalem a uma credencial da conta de WhatsApp: ficam **só no volume local**, nunca em SSM, S3 de artefatos, state, logs ou imagem; **não há backup** (05, A6 e Q23).
 - O QR code ou código de pareamento aparece nos logs do container e, portanto, também no bronze (origem `docker`, 02, seção 7.1). É de vida curta e inútil depois do pareamento; fica registrado como risco conhecido.
 - Quem tem SSH no `app-1` lê a sessão por definição (é o acesso previsto, 02, seção 8).
 
-**Número de WhatsApp por ambiente.** Recomenda-se um **número de teste no dev**, para que mensagens de teste não cheguem a clientes reais e para não arriscar o número de produção. Bibliotecas não oficiais de WhatsApp podem levar o WhatsApp a restringir o número; é um risco do produto e fora da infra. A escolha dos números é do autor e entra na configuração do microsserviço (**PENDENTE**).
+**Número de WhatsApp por ambiente.** Recomenda-se um **número de teste no dev**, para que mensagens de teste não cheguem a clientes reais e para não arriscar o número de produção. Bibliotecas não oficiais de WhatsApp podem levar o WhatsApp a restringir o número; é um risco do produto e fora da infra. A escolha dos números é do autor e entra no token da Whapi, que fica no `secrets.env` (05, A5).
 
 **Alternativa descartada (por ora): guardar a sessão no S3 e restaurá-la a cada ambiente novo, sem QR.** Exigiria mudar o microsserviço ou criar um processo auxiliar, poria uma credencial sensível no S3 e, com dois ambientes restaurando a mesma sessão, arrisca disputa e bloqueio do número. Só se reavalia se o pareamento a cada ciclo se tornar um problema real, com uma nova decisão.
 
@@ -179,7 +179,7 @@ Como o backend ainda não envia eventos, o que a infra garante desde já é o se
 |---|---|
 | Meio | **chamada HTTP** do backend ao microsserviço, pela rede `tnf-net`. Faz sentido porque o backend não usa o RabbitMQ (E9) e o RabbitMQ fica como detalhe interno do microsserviço |
 | Endereço | variável **`MESSAGING_URL`** = `http://messaging:<porta>`, entregue pela infra. O backend lê `${MESSAGING_URL}` como já lê `${DB_URL}` |
-| Porta | `MESSAGING_PORT`, **definida pela configuração do microsserviço** (pendente) |
+| Porta | `MESSAGING_PORT`, 8081, a porta do microsserviço (E8) |
 | Autenticação | segredo compartilhado **`MESSAGING_API_KEY`**, gerado pelo Terraform (um por ambiente) e entregue aos dois. O backend o envia em um cabeçalho e o microsserviço o confere. Motivo: todos os serviços (inclusive o frontend) estão na mesma rede, e a chave impede que outro container dispare mensagens de WhatsApp. É opcional: se o microsserviço não validar, o segredo sobra sem efeito |
 | Falha do microsserviço | recomendação para o backend: tempo limite curto na chamada e **não falhar a operação principal** (por exemplo, a criação do pedido) se o aviso não puder ser enviado; registrar o erro no log. Vale também com a mensageria desligada (o nome não resolve) e com o WhatsApp ainda não pareado (6.4.1). Reentrega de eventos perdidos (fila no backend ou tabela de eventos) é decisão da aplicação e **está fora do escopo da infra**. Limitação registrada: um evento enviado enquanto o microsserviço está fora do ar se perde, porque o RabbitMQ só protege o que já entrou no microsserviço |
 - **Tarefa fora da infra:** implementar o envio de eventos no backend e o recebimento no microsserviço.
@@ -243,7 +243,7 @@ Como o backend ainda não envia eventos, o que a infra garante desde já é o se
 | E7 | `max_replicas_per_node: 1` e validação `réplicas ≤ nós` (frontend e backend) | **Decidido** (09/10/2026) |
 | E8 | Limites de memória: frontend 128 MB, backend 768 MB, RabbitMQ 512 MB (a medir) | **Decidido** (09/10/2026) |
 | E9 | O backend publica os eventos de pedido no RabbitMQ e o microsserviço os consome; o backend recebe o endereço e os dois segredos do RabbitMQ | **Decidido** (autor, 26/10/2026, na E6; antes: só o microsserviço usava o RabbitMQ), porque o backend da `main` já publica no RabbitMQ |
-| E10 | Contrato backend → microsserviço por HTTP: `MESSAGING_URL`, `MESSAGING_API_KEY` e porta do microsserviço (6.5) | **Decidido** (09/10/2026); porta e validação da chave dependem da configuração do microsserviço |
+| E10 | Contrato backend → microsserviço por HTTP: `MESSAGING_URL`, `MESSAGING_API_KEY` e porta do microsserviço (6.5) | **Decidido** (09/10/2026); na E8, porta 8081 e o microsserviço não valida a chave (os eventos vão pelo RabbitMQ) |
 | E11 | Mensageria desligada com `REPLICAS_MESSAGING=0` até a E8: compose da mensageria em arquivo separado (`stacks/app-messaging.yml`), incluído só quando ligada, com `--prune` na `tnf-app`; o RabbitMQ segue implantado | **Decidido** (10/10/2026) |
 | E12 | `stack.env` carrega também `EXPECTED_NODES` e `MANAGER_COUNT`, não usados pelos compose files: servem à espera e à limpeza de nós no líder e à recusa de mudar `manager_count` no `infra up`. Em 11/10/2026 (item 22) passou a carregar também `DB_SCHEMA_REPO_URL`, `DB_SCHEMA_REF` e `DB_SCHEMA_PATH`, igualmente fora dos compose files: servem ao `db-init` do líder | **Decidido** (10/10/2026; ampliado em 11/10/2026) |
 | E13 | Mensageria com no máximo 1 réplica (`0` ou `1`) até a configuração do microsserviço confirmar que várias são seguras; `messaging ≤ app_node_count` deixa de existir; `max_replicas_per_node: 1` no compose; recusado no `plan` (03, T17; R15) | **Decidido** (10/10/2026) |

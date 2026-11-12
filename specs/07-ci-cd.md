@@ -13,7 +13,7 @@ Depende de: 01 (RF-09, RF-10), 03 (`image_tags`, `dockerhub_namespace`), 04 (con
 |---|---|---|---|
 | `TEM-NA-FESTA-frontend` | código do frontend | `<namespace>/tnf-frontend` | `frontend` |
 | `TEM-NA-FESTA-backend` | código do backend | `<namespace>/tnf-backend` | `backend-som` |
-| `TEM-NA-FESTA-microservice` | código do microsserviço (**PENDENTE** até a configuração dele) | `<namespace>/tnf-messaging` | `messaging` |
+| `TEM-NA-FESTA-microservice` | código do microsserviço de notificações | `<namespace>/tnf-messaging` | `messaging` |
 | `TEM-NA-FESTA-database` | script SQL do schema | *(não gera imagem)* | usado por `db_schema_repo_url`/`db_schema_ref` (05, B5) |
 | `TEM-NA-FESTA-infraestrutura` | Terraform, scripts, compose files e `specs/` | *(não gera imagem)* | – |
 - Nenhum dos repositórios de aplicação tem hoje CI/CD para o Docker Hub (informado pelo autor): os workflows deste documento são **novos**.
@@ -211,4 +211,4 @@ Ver tabela da seção 4.3. O token do Docker Hub deve ser o de **menor permissã
 - *Opcional, não bloqueia:* ligar ou não a aprovação por revisor em `prod` (*GitHub Environments*), se o seu plano permitir (4.5).
 - Caminho do script SQL dentro de `TEM-NA-FESTA-database` (variável `db_schema_path`).
 - Validar na implementação se as consultas de cabeçalho ao Docker Hub não consomem a cota de baixadas.
-- A configuração do microsserviço (imagem `tnf-messaging`, repositório `TEM-NA-FESTA-microservice`) continua **PENDENTE**; a mensageria fica desligada até a E8 (03, seção 3.4).
+- A configuração do microsserviço (imagem `tnf-messaging`, repositório `TEM-NA-FESTA-microservice`) foi configurada na E8 (porta 8081, `GET /health`, token da Whapi); a mensageria está ligada nos dois ambientes (03, seção 3.4).

@@ -39,6 +39,26 @@ setup() {
   [ -z "$(git status --porcelain)" ]
 }
 
+@test "publish-main: uma segunda publicação avança a branch (a anterior é ancestral, sem push forçado)" {
+  "$SCRIPT"
+  primeira="$(git rev-parse release/main)"
+  echo mais >infra
+  git commit -q -am "mais uma mudança"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  git merge-base --is-ancestor "$primeira" release/main
+  [ "$(git rev-parse release/main^3)" = "$primeira" ]
+}
+
+@test "publish-main: repetir sem mudança na develop não cria outro commit" {
+  "$SCRIPT"
+  primeira="$(git rev-parse release/main)"
+  run "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Nada a publicar"* ]]
+  [ "$(git rev-parse release/main)" = "$primeira" ]
+}
+
 @test "publish-main: sem diferença de conteúdo, não cria commit" {
   "$SCRIPT"
   git branch -q -f main release/main
