@@ -53,6 +53,16 @@ Sem o `secrets.env`, `infra plan` e `infra up` param antes de mudar qualquer coi
 - `./infra up dev --snapshot <id>` sobe um ambiente novo a partir de um snapshot escolhido.
 - Para mexer no banco à mão: `./infra ssh dev app-1` e, no nó, `tnf-db-shell`. São dois schemas: `tem_na_festa` (backend) e `temnafesta_notificacao` (microsserviço).
 
+### Teste de carga e bloqueio de login
+
+O backend bloqueia o login por 15 minutos depois de 5 falhas da mesma conta ou de 20 falhas de um mesmo IP (resposta 429). Numa carga que sai de uma máquina só, todos os usuários de teste têm o mesmo IP, então 20 senhas erradas bloqueiam todos. Para o ambiente de teste, ajuste os limites em `envs/<env>/terraform.tfvars` e rode `./infra up <env>` (o backend é reiniciado com os valores novos):
+
+```hcl
+login_limits = { max_por_ip = 0 }   # 0 desliga a regra por IP; os outros limites ficam nos padrões
+```
+
+Os campos são `max_por_conta` (5), `max_por_ip` (20), `janela_minutos` (15) e `bloqueio_minutos` (15). Depois do teste, apague a linha para voltar aos padrões.
+
 ### Quando algo dá errado
 
 | Sintoma | O que fazer |
@@ -82,17 +92,16 @@ O script do schema é público e não traz nenhum usuário (05, B5). Num banco q
    tnf-db-shell
    ```
 
-3. No cliente MySQL, crie o perfil e o usuário, colando o hash do passo 1 (troque nome e e-mail):
+3. No cliente MySQL, crie o usuário. Troque `HASH_DO_PASSO_1` pelo hash inteiro do passo 1 (começa com `$2a$10$`), sem nenhum outro caractere em volta, e troque o nome e o e-mail:
 
    ```sql
-   INSERT INTO perfil (nome, descricao) SELECT 'ADMIN', 'Administrador'
-     WHERE NOT EXISTS (SELECT 1 FROM perfil WHERE nome = 'ADMIN');
+   USE tem_na_festa;
    INSERT INTO usuario (nome, email, senha, is_ativo, is_deletado, data_criacao, perfil_id)
-     SELECT 'Administrador', 'admin@exemplo.com', '<hash do passo 1>', TRUE, FALSE, NOW(), id
+     SELECT 'Administrador', 'admin@exemplo.com', 'HASH_DO_PASSO_1', TRUE, FALSE, NOW(), id
      FROM perfil WHERE nome = 'ADMIN';
    ```
 
-O backend compara a senha com o hash BCrypt (`ROLE_ADMIN` vem do perfil `ADMIN`). Não guarde a senha nem o hash no repositório.
+Os perfis (`ADMIN`, `ATENDENTE`, `CONFEITEIRO`) e os métodos de pagamento (`PIX`, `Cartão de Crédito`, `Dinheiro`) já vêm no script do banco a partir da tag `v1.0.1`. Se o `SELECT` acima não inserir nenhuma linha, o banco foi criado com uma tag mais antiga: confira com `SELECT * FROM perfil;`. O backend compara a senha com o hash BCrypt (`ROLE_ADMIN` vem do perfil `ADMIN`). Não guarde a senha nem o hash no repositório.
 
 ## Para quem desenvolve
 

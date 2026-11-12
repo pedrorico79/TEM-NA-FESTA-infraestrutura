@@ -140,11 +140,16 @@ locals {
     DB_NAME            = var.db_name
     DB_USER            = local.db_app_username
     MESSAGING_PORT     = var.messaging_port == null ? "" : tostring(var.messaging_port)
-    EXPECTED_NODES     = join(",", local.expected_nodes)
-    MANAGER_COUNT      = tostring(var.manager_count)
-    DB_SCHEMA_REPO_URL = local.restoring_from_snapshot ? "" : var.db_schema_repo_url
-    DB_SCHEMA_REF      = local.restoring_from_snapshot ? "" : var.db_schema_ref
-    DB_SCHEMA_PATH     = local.restoring_from_snapshot ? "" : var.db_schema_path
+    # Limites de login do backend (03, seção 3.4): sempre preenchidos.
+    LOGIN_MAX_POR_CONTA    = tostring(var.login_limits.max_por_conta)
+    LOGIN_MAX_POR_IP       = tostring(var.login_limits.max_por_ip)
+    LOGIN_JANELA_MINUTOS   = tostring(var.login_limits.janela_minutos)
+    LOGIN_BLOQUEIO_MINUTOS = tostring(var.login_limits.bloqueio_minutos)
+    EXPECTED_NODES         = join(",", local.expected_nodes)
+    MANAGER_COUNT          = tostring(var.manager_count)
+    DB_SCHEMA_REPO_URL     = local.restoring_from_snapshot ? "" : var.db_schema_repo_url
+    DB_SCHEMA_REF          = local.restoring_from_snapshot ? "" : var.db_schema_ref
+    DB_SCHEMA_PATH         = local.restoring_from_snapshot ? "" : var.db_schema_path
     # Banco do microsserviço (E8): sempre preenchidas com a mensageria ligada,
     # porque um snapshot de antes da E8 não tem esse schema; o db-init só roda
     # o script se o schema estiver vazio.

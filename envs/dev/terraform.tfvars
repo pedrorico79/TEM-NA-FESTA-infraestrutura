@@ -36,7 +36,7 @@ db_multi_az       = false
 # e a origem do script do schema (tag do TEM-NA-FESTA-database, 05 B5).
 dockerhub_namespace = "cesaraugustotech"
 db_schema_repo_url  = "https://github.com/pedrorico79/TEM-NA-FESTA-database"
-db_schema_ref       = "v1.0.0"
+db_schema_ref       = "v1.0.1"
 db_schema_path      = "script-bd-tem-na-festa.sql"
 
 # Mensageria ligada (E8): porta do microsserviço e o banco dele, um segundo
