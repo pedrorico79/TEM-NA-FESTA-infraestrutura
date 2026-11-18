@@ -14,7 +14,7 @@
 #                             imagens em execução (o que reconstrói a aplicação)
 #   logs/logs.tar.gz          logs do bucket bronze (docker, com o acesso do
 #                             Nginx; auth; systemd) dos dias completos desde o
-#                             backup anterior (até 14 dias)
+#                             backup anterior (até 14 dias; no primeiro, os 14)
 #   contagens.tsv             linhas por tabela no momento do dump (validação)
 #   *.gpg                     cópia criptografada de cada arquivo (chave pública)
 #   SHA256SUMS                sha256 de todos os arquivos acima
@@ -188,12 +188,10 @@ if [[ -z "$BRONZE" ]]; then
   log "AVISO: bucket bronze não encontrado em $FB_CONF; conjunto sem logs"
 else
   # O conjunto anterior (do dia L) levou os logs até L-1: este leva de L até ontem.
-  # Sem conjunto anterior, só ontem. No máximo LOG_DAYS dias.
+  # Sem conjunto anterior (o primeiro backup), os últimos LOG_DAYS dias.
   first="$(date -u -d "-$LOG_DAYS day" +%F)"
-  if [[ -n "$last" ]]; then
-    [[ "${last%%_*}" > "$first" ]] && first="${last%%_*}"
-  else
-    first="$(date -u -d '-1 day' +%F)"
+  if [[ -n "$last" && "${last%%_*}" > "$first" ]]; then
+    first="${last%%_*}"
   fi
   today="$(date -u +%F)"
   raw="$SET/.logs"
