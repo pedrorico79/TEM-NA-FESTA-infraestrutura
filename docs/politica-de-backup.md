@@ -12,8 +12,9 @@ Resumo: **RPO de 1 hora** (um backup a cada hora cheia, pelo cron do `app-1`) e 
 | Contagem de linhas | gerada no dump | `contagens.tsv` | valida a restauração tabela por tabela |
 | Cópia criptografada | gerada no backup | `*.gpg` | um `.gpg` para cada arquivo acima |
 | Checksums | gerado no backup | `SHA256SUMS` | sha256 de todos os arquivos do conjunto |
+| Logs do dia anterior | bucket bronze (Fluent Bit): `docker` (inclui o log de acesso do Nginx e os logs do backend), `auth` (SSH e sudo) e `systemd` | `logs/<dia>/logs_<dia>.tar.gz` | um pacote por dia completo, com `.gpg` e `SHA256SUMS` próprios, até 14 dias para trás |
 
-Fora do escopo, de propósito: os segredos (ficam no SSM e no `secrets.env` do autor; a senha do banco nunca vai para um arquivo de backup), os logs (já vão para o bucket bronze pelo Fluent Bit), a fila do RabbitMQ (mensagens de vida curta) e o código (no GitHub, com tags).
+Fora do escopo, de propósito: os segredos (ficam no SSM e no `secrets.env` do autor; a senha do banco nunca vai para um arquivo de backup), a fila do RabbitMQ (mensagens de vida curta) e o código (no GitHub, com tags).
 
 ## Onde ficam as cópias
 
@@ -21,12 +22,14 @@ Fora do escopo, de propósito: os segredos (ficam no SSM e no `secrets.env` do a
 |---|---|---|---|---|
 | 1, produção | RDS MySQL, `us-east-1` | banco gerenciado | os dados vivos | o snapshot final no `infra down` (05, B2) |
 | 2, local | `/bckp/<carimbo>/` no `app-1`, `us-east-1` | disco EBS (bloco) | conjunto inteiro, em claro e `.gpg` | 24 horas |
-| 3, fora do local | `s3://tnf-backup-<conta>-us-west-2/<env>/` | armazenamento de objeto, outra região | só `.gpg` e `SHA256SUMS` | `horario/` 2 dias, `diario/` 35 dias, versões antigas 7 dias |
+| 3, fora do local | `s3://tnf-backup-<conta>-us-west-2/<env>/` | armazenamento de objeto, outra região | só `.gpg` e `SHA256SUMS` | `horario/` 2 dias, `diario/` 35 dias, `logs/` 180 dias, versões antigas 7 dias |
 | 4, offline | `~/tnf-backups/<env>/` no computador do autor | disco local, fora da AWS | só `.gpg` e `SHA256SUMS` | sem expiração |
 
 As cópias 1 a 3 cumprem a 3-2-1 (três cópias, duas mídias, uma fora do local). A cópia 4 fica isolada quando o computador está desligado e aproxima a política da 3-2-1-1-0; o "0 erros" vem da restauração de teste (`tnf-backup-restore`), que compara as contagens.
 
 O bucket de backup não pertence a nenhum ambiente: o `infra down` não o apaga, e a cópia 2 morre junto com o `app-1`. Ele é criado pelo AWS CLI no `scripts/backup-setup.sh`, porque a SCP do laboratório impede o `aws_s3_bucket` do Terraform (08, H20).
+
+Os logs têm a cópia 1 no bucket bronze (`us-east-1`), a 2 em `/bckp` e a 3 e a 4 iguais às do banco. A retenção de 180 dias segue os 6 meses que o Marco Civil da Internet (art. 15) pede para os registros de acesso a aplicações.
 
 ## RPO e cronjob
 

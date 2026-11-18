@@ -12,7 +12,11 @@
 # Cópia 2 (local, disco EBS do app-1): o conjunto inteiro, por 24 h.
 # Cópia 3 (fora do local, S3 em outra região): só os .gpg e o SHA256SUMS, em
 #   s3://<bucket>/<env>/horario/<carimbo>/; o primeiro conjunto de cada dia
-#   também vai para <env>/diario/. Depois do envio, o script baixa de volta e
+#   também vai para <env>/diario/.
+# Logs: cada dia completo de logs do bucket bronze (docker, com o log de acesso
+#   do Nginx; auth; systemd) vira logs/<dia>/logs_<dia>.tar.gz (+ .gpg e
+#   SHA256SUMS próprio) e vai para <env>/logs/<dia>/, uma vez por dia, até 14
+#   dias para trás (o ambiente pode ter ficado fora do ar). Depois do envio, o script baixa de volta e
 #   confere o sha256 (prova de que a transferência não corrompeu nada).
 # A senha do banco nunca vai na linha de comando: arquivo de opções em /run,
 # permissão 600, apagado ao fim (05, A6).
@@ -20,7 +24,9 @@
 # Uso: tnf-backup [--force]   (--force roda fora do app-1)
 # Variáveis (opcionais): TNF_BACKUP_DIR (/bckp), TNF_BACKUP_BUCKET
 #   (tnf-backup-<conta>-us-west-2), TNF_BACKUP_REGION (us-west-2),
-#   TNF_BACKUP_MIN_FREE_MB (500), TNF_BACKUP_LOCAL_HOURS (24).
+#   TNF_BACKUP_MIN_FREE_MB (500), TNF_BACKUP_LOCAL_HOURS (24),
+#   TNF_BACKUP_LOG_DAYS (14), TNF_BRONZE_BUCKET e TNF_BRONZE_REGION (lidos do
+#   /etc/fluent-bit/fluent-bit.conf).
 # Saída: 0 ok; 1 erro (mensagem no log); 2 recusado (pré-condição).
 set -euo pipefail
 umask 027
@@ -167,7 +173,7 @@ FPR="$(gpg --batch --with-colons --show-keys "$pub" | awk -F: '$1 == "fpr" { pri
 ) || fail "criptografia"
 
 # --- 6. checksum de todos os arquivos ------------------------------------------------------
-(cd "$SET" && find . -type f -printf '%P\n' | sort | xargs sha256sum >"$BACKUP_DIR/.SHA256SUMS.tmp")
+(cd "$SET" && find . -type f ! -name SHA256SUMS ! -path './logs/*' -printf '%P\n' | sort | xargs sha256sum >"$BACKUP_DIR/.SHA256SUMS.tmp")
 mv "$BACKUP_DIR/.SHA256SUMS.tmp" "$SET/SHA256SUMS"
 log "SHA256SUMS: $(wc -l <"$SET/SHA256SUMS") arquivos"
 
@@ -199,6 +205,59 @@ if ! aws s3 ls "$S3_BACKUP/$TNF_ENV/diario/$DAY" --region "$BACKUP_REGION" >/dev
   aws s3 cp "$dest/" "$S3_BACKUP/$TNF_ENV/diario/$STAMP/" --recursive --region "$BACKUP_REGION" --only-show-errors ||
     fail "cópia diária"
   log "primeiro conjunto do dia: copiado para $TNF_ENV/diario/$STAMP"
+fi
+
+# --- 9b. logs do bronze: um pacote por dia completo (falha aqui não derruba o backup) ----------
+FB_CONF="${TNF_FLUENT_BIT_CONF:-/etc/fluent-bit/fluent-bit.conf}"
+BRONZE="${TNF_BRONZE_BUCKET:-$(awk '$1 == "bucket" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"
+BRONZE_REGION="${TNF_BRONZE_REGION:-$(awk '$1 == "region" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"
+BRONZE_REGION="${BRONZE_REGION:-$TNF_REGION}"
+
+# backup_logs_day <AAAA-MM-DD>: empacota, cifra, envia e confere os logs do dia.
+backup_logs_day() {
+  local d="$1" y m dd dir src n
+  y="${d:0:4}" m="${d:5:2}" dd="${d:8:2}"
+  dir="$SET/logs/$d"
+  mkdir -p "$dir/brutos"
+  for src in $(aws s3 ls "s3://$BRONZE/logs/env=$TNF_ENV/" --region "$BRONZE_REGION" 2>/dev/null | awk '$1 == "PRE" { sub("/", "", $2); print $2 }'); do
+    aws s3 cp "s3://$BRONZE/logs/env=$TNF_ENV/$src/year=$y/month=$m/day=$dd/" "$dir/brutos/$src/" \
+      --recursive --region "$BRONZE_REGION" --only-show-errors 2>/dev/null || true
+  done
+  n=$(find "$dir/brutos" -type f | wc -l)
+  if ((n == 0)); then
+    rm -rf "$dir"
+    return 0 # dia sem logs (ambiente fora do ar)
+  fi
+  tar -czf "$dir/logs_$d.tar.gz" -C "$dir/brutos" . || return 1
+  rm -rf "$dir/brutos"
+  gpg --batch --yes --trust-model always --recipient "$FPR" --output "$dir/logs_$d.tar.gz.gpg" --encrypt "$dir/logs_$d.tar.gz" || return 1
+  (cd "$dir" && sha256sum "logs_$d.tar.gz" "logs_$d.tar.gz.gpg" >SHA256SUMS) || return 1
+  local ldest="$S3_BACKUP/$TNF_ENV/logs/$d"
+  aws s3 cp "$dir/logs_$d.tar.gz.gpg" "$ldest/logs_$d.tar.gz.gpg" --region "$BACKUP_REGION" --only-show-errors --checksum-algorithm SHA256 || return 1
+  local chk
+  chk="$(mktemp -d)"
+  aws s3 cp "$ldest/logs_$d.tar.gz.gpg" "$chk/" --region "$BACKUP_REGION" --only-show-errors
+  cp "$dir/SHA256SUMS" "$chk/"
+  if ! (cd "$chk" && sha256sum --check --ignore-missing --quiet SHA256SUMS); then
+    rm -rf "$chk"
+    return 1
+  fi
+  rm -rf "$chk"
+  # O SHA256SUMS vai por último: ele marca o dia como completo no destino.
+  aws s3 cp "$dir/SHA256SUMS" "$ldest/SHA256SUMS" --region "$BACKUP_REGION" --only-show-errors --checksum-algorithm SHA256 || return 1
+  log "logs de $d: $n arquivos do bronze, $(du -h "$dir/logs_$d.tar.gz" | cut -f1) compactados, enviados e conferidos (sha256 OK)"
+}
+
+if [[ -z "$BRONZE" ]]; then
+  log "AVISO: bucket bronze não encontrado em $FB_CONF; logs não copiados"
+else
+  for i in $(seq "${TNF_BACKUP_LOG_DAYS:-14}" -1 1); do
+    d="$(date -u -d "-$i day" +%F)"
+    if aws s3 ls "$S3_BACKUP/$TNF_ENV/logs/$d/SHA256SUMS" --region "$BACKUP_REGION" >/dev/null 2>&1; then
+      continue
+    fi
+    backup_logs_day "$d" || log "AVISO: logs de $d não conferiram no destino; nova tentativa na próxima execução"
+  done
 fi
 
 # --- 10. retenção local -------------------------------------------------------------------------

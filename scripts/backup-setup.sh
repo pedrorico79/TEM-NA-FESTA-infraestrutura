@@ -5,7 +5,7 @@
 #      do ambiente), criado pelo AWS CLI (a SCP do laboratório impede o
 #      aws_s3_bucket do Terraform, 08 H20): versionamento, SSE-S3, bloqueio
 #      de acesso público, só TLS e ciclo de vida (horário 2 dias, diário 35
-#      dias, versões antigas 7 dias). Nunca é apagado pelo infra down.
+#      dias, logs 180 dias, versões antigas 7 dias). Nunca é apagado pelo infra down.
 #   2. par de chaves GPG do backup em ~/.tnf-backup/gnupg (pede a senha):
 #      Curve25519 (cv25519 para cifrar), pequena o bastante para o SSM padrão.
 #   3. chave pública em s3://<bucket>/chaves/ (os nós só cifram);
@@ -52,7 +52,8 @@ rules='[]'
 for env in dev prod; do
   rules="$(jq -c --arg e "$env" '. + [
     {ID: ($e + "-horario"), Status: "Enabled", Filter: {Prefix: ($e + "/horario/")}, Expiration: {Days: 2}},
-    {ID: ($e + "-diario"),  Status: "Enabled", Filter: {Prefix: ($e + "/diario/")},  Expiration: {Days: 35}}]' <<<"$rules")"
+    {ID: ($e + "-diario"),  Status: "Enabled", Filter: {Prefix: ($e + "/diario/")},  Expiration: {Days: 35}},
+    {ID: ($e + "-logs"),    Status: "Enabled", Filter: {Prefix: ($e + "/logs/")},    Expiration: {Days: 180}}]' <<<"$rules")"
 done
 rules="$(jq -c '. + [{ID: "versoes-antigas", Status: "Enabled", Filter: {Prefix: ""},
   NoncurrentVersionExpiration: {NoncurrentDays: 7}}]' <<<"$rules")"
