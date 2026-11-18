@@ -1,35 +1,37 @@
 #!/usr/bin/env bash
-# tnf-backup: backup do ambiente pela política 3-2-1 (docs/politica-de-backup.md).
+# tnf-backup: backup diário do ambiente pela política 3-2-1 (docs/politica-de-backup.md).
 # Executado pelo cron (/etc/cron.d/tnf-backup) todo dia às 03:00 de Brasília nos
-# nós app; só age no app-1, que tem o cliente MySQL e acesso ao RDS. Cada execução gera um
-# conjunto /bckp/<carimbo>/ com:
+# nós app; só age no app-1, que tem o cliente MySQL e acesso ao RDS.
+#
+# As três cópias: 1, produção (RDS e bucket bronze dos logs); 2, S3 em outra
+# região (s3://<bucket>/<env>/diario/<carimbo>/, só .gpg e SHA256SUMS);
+# 3, offline no computador do autor (scripts/backup-pull.sh).
+#
+# Cada execução monta o conjunto em /bckp/<carimbo>/, uma área de trânsito que
+# é apagada depois do envio conferido:
 #   db/<schema>.sql.gz        dump de cada schema (mysqldump | gzip)
 #   app/config.tar.gz         stack.env, compose files, tnf-node.env e as
 #                             imagens em execução (o que reconstrói a aplicação)
+#   logs/logs.tar.gz          logs do bucket bronze (docker, com o acesso do
+#                             Nginx; auth; systemd) dos dias completos desde o
+#                             backup anterior (até 14 dias)
 #   contagens.tsv             linhas por tabela no momento do dump (validação)
 #   *.gpg                     cópia criptografada de cada arquivo (chave pública)
 #   SHA256SUMS                sha256 de todos os arquivos acima
-# Cópia 2 (local, disco EBS do app-1): o conjunto inteiro, por 72 h (3 conjuntos).
-# Cópia 3 (fora do local, S3 em outra região): só os .gpg e o SHA256SUMS, em
-#   s3://<bucket>/<env>/diario/<carimbo>/.
-# Logs: cada dia completo de logs do bucket bronze (docker, com o log de acesso
-#   do Nginx; auth; systemd) vira logs/<dia>/logs_<dia>.tar.gz (+ .gpg e
-#   SHA256SUMS próprio) e vai para <env>/logs/<dia>/, uma vez por dia, até 14
-#   dias para trás (o ambiente pode ter ficado fora do ar). Depois do envio, o script baixa de volta e
-#   confere o sha256 (prova de que a transferência não corrompeu nada).
-# A senha do banco nunca vai na linha de comando: arquivo de opções em /run,
-# permissão 600, apagado ao fim (05, A6).
+# Depois do envio, o script baixa de volta e confere o sha256 (prova de que a
+# transferência não corrompeu nada). A senha do banco nunca vai na linha de
+# comando: arquivo de opções em /run, permissão 600, apagado ao fim (05, A6).
 #
-# Uso: tnf-backup [--force] [--se-atrasado]
+# Uso: tnf-backup [--force] [--se-atrasado] [--manter-local]
 #   --force: roda fora do app-1.
 #   --se-atrasado: só faz o backup se o último conjunto no S3 tiver mais de
 #     24 h (o laboratório raramente está no ar às 3 h; o cron chama assim a
 #     cada hora para recuperar o diário perdido, e não faz nada no resto).
+#   --manter-local: não apaga a área de trânsito no fim (para inspeção).
 # Variáveis (opcionais): TNF_BACKUP_DIR (/bckp), TNF_BACKUP_BUCKET
 #   (tnf-backup-<conta>-us-west-2), TNF_BACKUP_REGION (us-west-2),
-#   TNF_BACKUP_MIN_FREE_MB (500), TNF_BACKUP_LOCAL_HOURS (72),
-#   TNF_BACKUP_LOG_DAYS (14), TNF_BRONZE_BUCKET e TNF_BRONZE_REGION (lidos do
-#   /etc/fluent-bit/fluent-bit.conf).
+#   TNF_BACKUP_MIN_FREE_MB (500), TNF_BACKUP_LOG_DAYS (14), TNF_BRONZE_BUCKET
+#   e TNF_BRONZE_REGION (lidos do /etc/fluent-bit/fluent-bit.conf).
 # Saída: 0 ok; 1 erro (mensagem no log); 2 recusado (pré-condição).
 set -euo pipefail
 umask 027
@@ -41,11 +43,12 @@ fi
 
 # shellcheck source=/dev/null
 source "${TNF_NODE_ENV:-/etc/tnf-node.env}"
-FORCE=0 IF_LATE=0
+FORCE=0 IF_LATE=0 KEEP=0
 for arg in "$@"; do
   case "$arg" in
     --force) FORCE=1 ;;
     --se-atrasado) IF_LATE=1 ;;
+    --manter-local) KEEP=1 ;;
     *) echo "opção desconhecida: $arg" >&2; exit 2 ;;
   esac
 done
@@ -57,7 +60,6 @@ fi
 BACKUP_DIR="${TNF_BACKUP_DIR:-/bckp}"
 BACKUP_REGION="${TNF_BACKUP_REGION:-us-west-2}"
 MIN_FREE_MB="${TNF_BACKUP_MIN_FREE_MB:-500}"
-LOCAL_HOURS="${TNF_BACKUP_LOCAL_HOURS:-72}"
 GNUPGHOME="${TNF_BACKUP_GNUPGHOME:-/var/lib/tnf-backup/gnupg}"
 RUN_DIR="${TNF_BACKUP_RUN_DIR:-/run}"
 export GNUPGHOME
@@ -77,9 +79,10 @@ if [[ -z "${TNF_BACKUP_BUCKET:-}" ]]; then
 fi
 S3_BACKUP="s3://$TNF_BACKUP_BUCKET"
 
+# Último conjunto no S3: decide o --se-atrasado e de que dia em diante entram os logs.
+last="$({ aws s3 ls "$S3_BACKUP/$TNF_ENV/diario/" --region "$BACKUP_REGION" 2>/dev/null || true; } |
+  awk '$1 == "PRE" { sub("/", "", $2); print $2 }' | sort | tail -n 1)"
 if [[ "$IF_LATE" -eq 1 ]]; then
-  last="$({ aws s3 ls "$S3_BACKUP/$TNF_ENV/diario/" --region "$BACKUP_REGION" 2>/dev/null || true; } |
-    awk '$1 == "PRE" { sub("/", "", $2); print $2 }' | sort | tail -n 1)"
   if [[ -n "$last" ]]; then
     last_epoch=$(date -u -d "$(sed 's/_/ /; s/-\([0-9][0-9]\)$/:\1/' <<<"$last")" +%s)
     if (($(date -u +%s) - last_epoch < 24 * 3600)); then
@@ -106,10 +109,9 @@ if [[ -e "$SET" ]]; then
   exit 2
 fi
 mkdir -p "$SET/db" "$SET/app"
-# Conjunto incompleto não fica no disco; o arquivo de opções e a conferência somem sempre.
+# A área de trânsito some no fim (com sucesso ou não); o arquivo de opções e a conferência também.
 cleanup() {
-  local rc=$?
-  if [[ $rc -ne 0 ]]; then rm -rf "$SET"; fi
+  if [[ "$KEEP" -eq 0 ]]; then rm -rf "$SET"; fi
   rm -f "${OPTS:-}"
   rm -rf "${CHECK_DIR:-}"
 }
@@ -176,6 +178,48 @@ tar -czf "$SET/app/config.tar.gz" -C "$stage" . || fail "tar da configuração"
 rm -rf "$stage"
 log "configuração: $(du -h "$SET/app/config.tar.gz" | cut -f1)"
 
+# --- 4b. logs do bronze: os dias completos desde o backup anterior ---------------------------
+FB_CONF="${TNF_FLUENT_BIT_CONF:-/etc/fluent-bit/fluent-bit.conf}"
+BRONZE="${TNF_BRONZE_BUCKET:-$(awk '$1 == "bucket" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"
+BRONZE_REGION="${TNF_BRONZE_REGION:-$(awk '$1 == "region" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"
+BRONZE_REGION="${BRONZE_REGION:-$TNF_REGION}"
+LOG_DAYS="${TNF_BACKUP_LOG_DAYS:-14}"
+if [[ -z "$BRONZE" ]]; then
+  log "AVISO: bucket bronze não encontrado em $FB_CONF; conjunto sem logs"
+else
+  # O conjunto anterior (do dia L) levou os logs até L-1: este leva de L até ontem.
+  # Sem conjunto anterior, só ontem. No máximo LOG_DAYS dias.
+  first="$(date -u -d "-$LOG_DAYS day" +%F)"
+  if [[ -n "$last" ]]; then
+    [[ "${last%%_*}" > "$first" ]] && first="${last%%_*}"
+  else
+    first="$(date -u -d '-1 day' +%F)"
+  fi
+  today="$(date -u +%F)"
+  raw="$SET/.logs"
+  mkdir -p "$raw"
+  sources="$({ aws s3 ls "s3://$BRONZE/logs/env=$TNF_ENV/" --region "$BRONZE_REGION" 2>/dev/null || true; } |
+    awk '$1 == "PRE" { sub("/", "", $2); print $2 }')"
+  d="$first" days=()
+  while [[ "$d" < "$today" ]]; do
+    for src in $sources; do
+      aws s3 cp "s3://$BRONZE/logs/env=$TNF_ENV/$src/year=${d:0:4}/month=${d:5:2}/day=${d:8:2}/" "$raw/$d/$src/" \
+        --recursive --region "$BRONZE_REGION" --only-show-errors 2>/dev/null || true
+    done
+    [[ -d "$raw/$d" ]] && days+=("$d")
+    d="$(date -u -d "$d + 1 day" +%F)"
+  done
+  n=$(find "$raw" -type f | wc -l)
+  if ((n > 0)); then
+    mkdir -p "$SET/logs"
+    tar -czf "$SET/logs/logs.tar.gz" -C "$raw" . || fail "tar dos logs"
+    log "logs: ${days[*]} ($n arquivos do bronze, $(du -h "$SET/logs/logs.tar.gz" | cut -f1) compactados)"
+  else
+    log "logs: nenhum arquivo no bronze de $first até ontem"
+  fi
+  rm -rf "$raw"
+fi
+
 # --- 5. cópia criptografada (gpg, chave pública do bucket de backup) ----------------------
 mkdir -p "$GNUPGHOME"
 chmod 700 "$GNUPGHOME"
@@ -187,17 +231,17 @@ FPR="$(gpg --batch --with-colons --show-keys "$pub" | awk -F: '$1 == "fpr" { pri
 [[ -n "$FPR" ]] || fail "chave pública inválida"
 (
   cd "$SET"
-  for f in db/*.sql.gz app/config.tar.gz contagens.tsv; do
+  for f in db/*.sql.gz app/config.tar.gz contagens.tsv $(ls logs/logs.tar.gz 2>/dev/null); do
     gpg --batch --yes --trust-model always --recipient "$FPR" --output "$f.gpg" --encrypt "$f"
   done
 ) || fail "criptografia"
 
 # --- 6. checksum de todos os arquivos ------------------------------------------------------
-(cd "$SET" && find . -type f ! -name SHA256SUMS ! -path './logs/*' -printf '%P\n' | sort | xargs sha256sum >"$BACKUP_DIR/.SHA256SUMS.tmp")
+(cd "$SET" && find . -type f ! -name SHA256SUMS -printf '%P\n' | sort | xargs sha256sum >"$BACKUP_DIR/.SHA256SUMS.tmp")
 mv "$BACKUP_DIR/.SHA256SUMS.tmp" "$SET/SHA256SUMS"
 log "SHA256SUMS: $(wc -l <"$SET/SHA256SUMS") arquivos"
 
-# --- 7. cópia fora do local (S3, outra região) --------------------------------------------
+# --- 7. cópia 2: S3 em outra região --------------------------------------------
 dest="$S3_BACKUP/$TNF_ENV/diario/$STAMP"
 t0=$(date +%s)
 (
@@ -220,63 +264,7 @@ printf '%s\n' "$check_out" | sed 's/^/  /'
 ok_count=$(grep -c ': OK$' <<<"$check_out")
 log "integridade conferida no destino: $ok_count arquivos OK, 0 erros"
 
-# --- 9. logs do bronze: um pacote por dia completo (falha aqui não derruba o backup) ----------
-FB_CONF="${TNF_FLUENT_BIT_CONF:-/etc/fluent-bit/fluent-bit.conf}"
-BRONZE="${TNF_BRONZE_BUCKET:-$(awk '$1 == "bucket" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"
-BRONZE_REGION="${TNF_BRONZE_REGION:-$(awk '$1 == "region" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"
-BRONZE_REGION="${BRONZE_REGION:-$TNF_REGION}"
-
-# backup_logs_day <AAAA-MM-DD>: empacota, cifra, envia e confere os logs do dia.
-backup_logs_day() {
-  local d="$1" y m dd dir src n
-  y="${d:0:4}" m="${d:5:2}" dd="${d:8:2}"
-  dir="$SET/logs/$d"
-  mkdir -p "$dir/brutos"
-  for src in $(aws s3 ls "s3://$BRONZE/logs/env=$TNF_ENV/" --region "$BRONZE_REGION" 2>/dev/null | awk '$1 == "PRE" { sub("/", "", $2); print $2 }'); do
-    aws s3 cp "s3://$BRONZE/logs/env=$TNF_ENV/$src/year=$y/month=$m/day=$dd/" "$dir/brutos/$src/" \
-      --recursive --region "$BRONZE_REGION" --only-show-errors 2>/dev/null || true
-  done
-  n=$(find "$dir/brutos" -type f | wc -l)
-  if ((n == 0)); then
-    rm -rf "$dir"
-    return 0 # dia sem logs (ambiente fora do ar)
-  fi
-  tar -czf "$dir/logs_$d.tar.gz" -C "$dir/brutos" . || return 1
-  rm -rf "$dir/brutos"
-  gpg --batch --yes --trust-model always --recipient "$FPR" --output "$dir/logs_$d.tar.gz.gpg" --encrypt "$dir/logs_$d.tar.gz" || return 1
-  (cd "$dir" && sha256sum "logs_$d.tar.gz" "logs_$d.tar.gz.gpg" >SHA256SUMS) || return 1
-  local ldest="$S3_BACKUP/$TNF_ENV/logs/$d"
-  aws s3 cp "$dir/logs_$d.tar.gz.gpg" "$ldest/logs_$d.tar.gz.gpg" --region "$BACKUP_REGION" --only-show-errors --checksum-algorithm SHA256 || return 1
-  local chk
-  chk="$(mktemp -d)"
-  aws s3 cp "$ldest/logs_$d.tar.gz.gpg" "$chk/" --region "$BACKUP_REGION" --only-show-errors
-  cp "$dir/SHA256SUMS" "$chk/"
-  if ! (cd "$chk" && sha256sum --check --ignore-missing --quiet SHA256SUMS); then
-    rm -rf "$chk"
-    return 1
-  fi
-  rm -rf "$chk"
-  # O SHA256SUMS vai por último: ele marca o dia como completo no destino.
-  aws s3 cp "$dir/SHA256SUMS" "$ldest/SHA256SUMS" --region "$BACKUP_REGION" --only-show-errors --checksum-algorithm SHA256 || return 1
-  log "logs de $d: $n arquivos do bronze, $(du -h "$dir/logs_$d.tar.gz" | cut -f1) compactados, enviados e conferidos (sha256 OK)"
-}
-
-if [[ -z "$BRONZE" ]]; then
-  log "AVISO: bucket bronze não encontrado em $FB_CONF; logs não copiados"
-else
-  for i in $(seq "${TNF_BACKUP_LOG_DAYS:-14}" -1 1); do
-    d="$(date -u -d "-$i day" +%F)"
-    if aws s3 ls "$S3_BACKUP/$TNF_ENV/logs/$d/SHA256SUMS" --region "$BACKUP_REGION" >/dev/null 2>&1; then
-      continue
-    fi
-    backup_logs_day "$d" || log "AVISO: logs de $d não conferiram no destino; nova tentativa na próxima execução"
-  done
+log "fim do backup $STAMP: $(du -sh "$SET" | cut -f1) enviados e conferidos, $(($(date +%s) - START)) s no total"
+if [[ "$KEEP" -eq 0 ]]; then
+  log "área de trânsito $SET apagada (as cópias ficam no S3 e no computador do autor)"
 fi
-
-# --- 10. retenção local -------------------------------------------------------------------------
-find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -name '20*' -mmin "+$((LOCAL_HOURS * 60))" -print -exec rm -rf {} + |
-  sed 's/^/  removido (retenção local): /'
-
-total=$(du -sh "$SET" | cut -f1)
-log "fim do backup $STAMP: $total locais, $(($(date +%s) - START)) s no total"
-printf '%s\n' "$STAMP" >"$BACKUP_DIR/ULTIMO"

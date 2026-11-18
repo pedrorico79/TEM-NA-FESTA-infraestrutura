@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cópia 4 da política de backup (docs/politica-de-backup.md): traz as cópias
+# Cópia 3 (offline) da política de backup (docs/politica-de-backup.md): traz as cópias
 # criptografadas do S3 para o computador do autor (fora da AWS, desconectada
 # quando o computador está desligado) e confere o sha256 de cada conjunto.
 # Uso: scripts/backup-pull.sh <env> [destino]   (destino: ~/tnf-backups)

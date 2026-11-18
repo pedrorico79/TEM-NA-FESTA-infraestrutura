@@ -1,39 +1,38 @@
 # Política de backup (regra 3-2-1)
 
-Resumo: **RPO de 24 horas** (um backup por dia, às 03:00 de Brasília, pelo cron do `app-1`) e **RTO de 1 hora** para a perda do ambiente inteiro (15 minutos quando só o banco se perde). Há quatro cópias em duas mídias, duas delas fora da região do ambiente, e cada transferência é conferida por `sha256sum`.
+Resumo: um backup por dia, **às 03:00 de Brasília (RPO de 24 horas)**, feito pelo cron do `app-1`, com **RTO de 1 hora** para a perda do ambiente inteiro (15 minutos quando só o banco se perde). Banco, configuração e logs vão juntos num único conjunto diário, criptografado e conferido por `sha256sum`.
 
-## Escopo
+## As três cópias
 
-| Item | Onde fica | Arquivo no backup | Observação |
-|---|---|---|---|
-| Banco do backend | RDS, schema `tem_na_festa` | `db/tem_na_festa.sql.gz` | `mysqldump --single-transaction --routines --triggers` |
-| Banco do microsserviço | RDS, schema `temnafesta_notificacao` | `db/temnafesta_notificacao.sql.gz` | idem |
-| Configuração da aplicação | bucket de artefatos e o nó | `app/config.tar.gz` | `stack.env`, compose files, `tnf-node.env` e as imagens em execução |
-| Contagem de linhas | gerada no dump | `contagens.tsv` | valida a restauração tabela por tabela |
-| Cópia criptografada | gerada no backup | `*.gpg` | um `.gpg` para cada arquivo acima |
-| Checksums | gerado no backup | `SHA256SUMS` | sha256 de todos os arquivos do conjunto |
-| Logs do dia anterior | bucket bronze (Fluent Bit): `docker` (inclui o log de acesso do Nginx e os logs do backend), `auth` (SSH e sudo) e `systemd` | `logs/<dia>/logs_<dia>.tar.gz` | um pacote por dia completo, com `.gpg` e `SHA256SUMS` próprios, até 14 dias para trás |
-
-Fora do escopo, de propósito: os segredos (ficam no SSM e no `secrets.env` do autor; a senha do banco nunca vai para um arquivo de backup), a fila do RabbitMQ (mensagens de vida curta) e o código (no GitHub, com tags).
-
-## Onde ficam as cópias
-
-| Cópia | Local | Mídia | Conteúdo | Retenção |
+| Cópia | Onde | Mídia | Conteúdo | Retenção |
 |---|---|---|---|---|
-| 1, produção | RDS MySQL, `us-east-1` | banco gerenciado | os dados vivos | o snapshot final no `infra down` (05, B2) |
-| 2, local | `/bckp/<carimbo>/` no `app-1`, `us-east-1` | disco EBS (bloco) | conjunto inteiro, em claro e `.gpg` | 72 horas (3 conjuntos) |
-| 3, fora do local | `s3://tnf-backup-<conta>-us-west-2/<env>/` | armazenamento de objeto, outra região | só `.gpg` e `SHA256SUMS` | `diario/` 35 dias, `logs/` 180 dias, versões antigas 7 dias |
-| 4, offline | `~/tnf-backups/<env>/` no computador do autor | disco local, fora da AWS | só `.gpg` e `SHA256SUMS` | sem expiração |
+| 1, produção | RDS MySQL e bucket bronze dos logs, `us-east-1` | banco gerenciado e objeto | os dados vivos e os logs que o Fluent Bit envia | snapshot final no `infra down` (05, B2) |
+| 2, S3 | `s3://tnf-backup-<conta>-us-west-2/<env>/diario/<carimbo>/` | armazenamento de objeto, outra região | só `.gpg` e `SHA256SUMS` | 180 dias; versões antigas 7 dias |
+| 3, local offline | `~/tnf-backups/<env>/diario/` no computador do autor | disco local, fora da AWS | só `.gpg` e `SHA256SUMS` | sem expiração |
 
-As cópias 1 a 3 cumprem a 3-2-1 (três cópias, duas mídias, uma fora do local). A cópia 4 fica isolada quando o computador está desligado e aproxima a política da 3-2-1-1-0; o "0 erros" vem da restauração de teste (`tnf-backup-restore`), que compara as contagens.
+Três cópias, duas mídias (a AWS e o disco do computador) e uma fora do local (duas, na verdade: outra região e fora da AWS). A cópia 3 fica isolada quando o computador está desligado e aproxima a política da 3-2-1-1-0; o "0 erros" vem da restauração de teste.
 
-O bucket de backup não pertence a nenhum ambiente: o `infra down` não o apaga, e a cópia 2 morre junto com o `app-1`. Ele é criado pelo AWS CLI no `scripts/backup-setup.sh`, porque a SCP do laboratório impede o `aws_s3_bucket` do Terraform (08, H20).
+O `/bckp` do `app-1` não é uma cópia: é a área de trânsito onde o conjunto é montado antes do envio, apagada assim que o S3 confere.
 
-Os logs têm a cópia 1 no bucket bronze (`us-east-1`), a 2 em `/bckp` e a 3 e a 4 iguais às do banco. A retenção de 180 dias segue os 6 meses que o Marco Civil da Internet (art. 15) pede para os registros de acesso a aplicações.
+O bucket de backup não pertence a nenhum ambiente: o `infra down` não o apaga. Ele é criado pelo AWS CLI no `scripts/backup-setup.sh`, porque a SCP do laboratório impede o `aws_s3_bucket` do Terraform (08, H20).
+
+## O que vai no conjunto diário
+
+| Arquivo | Origem | Conteúdo |
+|---|---|---|
+| `db/tem_na_festa.sql.gz` | RDS | dump do schema do backend (`mysqldump --single-transaction --routines --triggers`) |
+| `db/temnafesta_notificacao.sql.gz` | RDS | dump do schema do microsserviço |
+| `app/config.tar.gz` | bucket de artefatos e o nó | `stack.env`, compose files, `tnf-node.env` e as imagens em execução |
+| `logs/logs.tar.gz` | bucket bronze | logs `docker` (inclui o acesso do Nginx e os logs do backend), `auth` (SSH e sudo) e `systemd` dos dias completos desde o backup anterior, até 14 dias |
+| `contagens.tsv` | RDS | linhas por tabela no momento do dump, para validar a restauração |
+| `*.gpg` | o próprio backup | cópia criptografada de cada arquivo acima |
+| `SHA256SUMS` | o próprio backup | sha256 de todos os arquivos |
+
+Fora do escopo, de propósito: os segredos (ficam no SSM e no `secrets.env` do autor), a fila do RabbitMQ (mensagens de vida curta) e o código (no GitHub, com tags).
 
 ## RPO e cronjob
 
-O backup roda uma vez por dia, às 03:00 de Brasília, quando a confeitaria está fechada e ninguém lança pedidos. O RPO é de 24 horas: no pior caso se perde o dia de lançamentos desde a madrugada anterior, que a equipe consegue refazer pelas conversas de WhatsApp, onde os pedidos chegam.
+O backup roda às 03:00 de Brasília, quando a confeitaria está fechada. No pior caso se perdem os lançamentos desde a madrugada anterior, que a equipe consegue refazer pelas conversas de WhatsApp, por onde os pedidos chegam.
 
 ```cron
 # /etc/cron.d/tnf-backup (node/cron/tnf-backup). Os nós rodam em UTC: 06:00 UTC = 03:00 em Brasília.
@@ -41,7 +40,7 @@ O backup roda uma vez por dia, às 03:00 de Brasília, quando a confeitaria est�
 30 * * * * root /usr/local/sbin/tnf-backup --se-atrasado >> /var/log/tnf-backup.log 2>&1
 ```
 
-A segunda linha existe por causa do laboratório, que raramente está no ar às 3 h. A cada hora, o script só lista o S3: se o último backup diário tiver menos de 24 horas, termina sem fazer nada; se tiver mais, faz o backup naquela hora. Assim o RPO de 24 horas vale mesmo quando o ambiente sobe à tarde. O cron é instalado pelo `node-bootstrap.sh` em todos os nós app, e o script só age no `app-1`.
+A segunda linha existe por causa do laboratório, que raramente está no ar às 3 h: a cada hora o script só lista o S3 e, se o último conjunto tiver mais de 24 horas, faz o backup naquele momento. O cron é instalado pelo `node-bootstrap.sh` em todos os nós app, e o script só age no `app-1`.
 
 ## RTO
 
@@ -50,17 +49,13 @@ A segunda linha existe por causa do laboratório, que raramente está no ar às 
 | Banco corrompido ou apagado, ambiente no ar | `tnf-backup-restore --destino producao` | 15 minutos |
 | Ambiente perdido | `infra up <env>` (13 min medidos no dev em 05/11) e a restauração | 1 hora |
 
-O tempo de restauração medido em teste está no relatório que o `tnf-backup-restore` grava em `/bckp/restauracoes/`.
+O tempo de restauração medido em teste fica no relatório que o `tnf-backup-restore` grava em `/bckp/restauracoes/`.
 
 ## Integridade e criptografia
 
-O `sha256sum` é conferido em três pontos: no destino, logo depois do envio ao S3 (o script baixa de volta e roda `sha256sum --check`), na cópia 4 (`scripts/backup-pull.sh`) e antes de cada restauração (um conjunto que não confere não é restaurado). O envio também usa `--checksum-algorithm SHA256`, e o S3 recusa uma parte que chegue diferente.
+O `sha256sum` é conferido em três pontos: no S3, logo depois do envio (o script baixa de volta e roda `sha256sum --check`), na cópia offline (`scripts/backup-pull.sh`) e antes de cada restauração. O envio também usa `--checksum-algorithm SHA256`.
 
-A cópia criptografada usa GPG com um par de chaves Curve25519 do backup. A chave pública fica em `s3://<bucket>/chaves/`, e os nós só cifram. A chave privada, protegida por senha, fica no SSM (`/tnf/backup/gpg_private_key`, SecureString) e no computador do autor (`~/.tnf-backup/tnf-backup-privada.asc`). A senha fica só com o autor, então quem compromete um nó não lê os backups.
-
-## Responsáveis
-
-O cron executa sozinho e grava em `/var/log/tnf-backup.log`. O autor (César) roda o `backup-setup.sh` uma vez, a restauração de teste ao menos uma vez por sprint e aprova qualquer restauração em produção.
+A criptografia usa GPG com um par de chaves Curve25519 do backup. A chave pública fica em `s3://<bucket>/chaves/`, e os nós só cifram. A chave privada, protegida por senha, fica no SSM (`/tnf/backup/gpg_private_key`) e em `~/.tnf-backup/` no computador do autor. A senha fica só com o autor.
 
 ## Comandos
 
@@ -68,7 +63,6 @@ O cron executa sozinho e grava em `/var/log/tnf-backup.log`. O autor (César) ro
 scripts/backup-setup.sh                         # uma vez por conta do laboratório (WSL)
 sudo tnf-backup --force                          # backup avulso (no app-1)
 sudo tnf-backup-restore                          # teste: último conjunto do S3 em schemas restore_*
-sudo tnf-backup-restore --origem local           # teste a partir da cópia 2
 sudo tnf-backup-restore --destino producao       # restauração real (pare o backend antes)
-scripts/backup-pull.sh prod                      # cópia 4 (WSL)
+scripts/backup-pull.sh prod                      # cópia 3, offline (WSL)
 ```

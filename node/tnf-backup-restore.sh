@@ -2,11 +2,11 @@
 # tnf-backup-restore: restaura um conjunto do tnf-backup e mede o tempo de
 # cada fase (docs/politica-de-backup.md, RTO). Instalado nos nós app.
 #
-# Uso: tnf-backup-restore [--origem s3|local] [--carimbo <AAAA-MM-DD_HH-MM>]
+# Uso: tnf-backup-restore [--carimbo <AAAA-MM-DD_HH-MM>]
 #                         [--destino teste|producao] [--manter]
-#   --origem s3 (padrão): baixa a cópia criptografada do S3 (cópia 3), confere o
-#     SHA256SUMS e descriptografa com a chave privada; local: usa /bckp (cópia 2).
-#   --carimbo: o conjunto; sem ele, o mais recente da origem.
+#   Baixa a cópia criptografada do S3 (cópia 2), confere o SHA256SUMS e
+#   descriptografa com a chave privada.
+#   --carimbo: o conjunto; sem ele, o mais recente.
 #   --destino teste (padrão): restaura em schemas novos restore_<schema>, sem
 #     tocar no banco do ambiente, e apaga esses schemas no fim (--manter não apaga).
 #     producao: grava por cima dos schemas do ambiente (pede confirmação; pare o
@@ -29,7 +29,6 @@ source "${TNF_NODE_ENV:-/etc/tnf-node.env}"
 ORIGEM=s3 CARIMBO="" DESTINO=teste MANTER=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --origem) ORIGEM="$2"; shift 2 ;;
     --carimbo) CARIMBO="$2"; shift 2 ;;
     --destino) DESTINO="$2"; shift 2 ;;
     --manter) MANTER=1; shift ;;
@@ -37,7 +36,6 @@ while [[ $# -gt 0 ]]; do
     *) echo "opção desconhecida: $1" >&2; exit 2 ;;
   esac
 done
-[[ "$ORIGEM" == s3 || "$ORIGEM" == local ]] || { echo "--origem s3 ou local" >&2; exit 2; }
 [[ "$DESTINO" == teste || "$DESTINO" == producao ]] || { echo "--destino teste ou producao" >&2; exit 2; }
 
 BACKUP_DIR="${TNF_BACKUP_DIR:-/bckp}"
@@ -75,11 +73,6 @@ if [[ "$ORIGEM" == s3 ]]; then
   say "baixando $S3_BACKUP/$TNF_ENV/diario/$CARIMBO/"
   aws s3 cp "$S3_BACKUP/$TNF_ENV/diario/$CARIMBO/" "$SET/" --recursive --region "$BACKUP_REGION" --only-show-errors
   fase "download do S3 ($(du -sh "$SET" | cut -f1))" "$t"
-else
-  [[ -n "$CARIMBO" ]] || CARIMBO="$(cat "$BACKUP_DIR/ULTIMO")"
-  SET="$BACKUP_DIR/$CARIMBO"
-  [[ -d "$SET" ]] || { echo "conjunto local $SET não existe" >&2; exit 2; }
-  fase "conjunto local ($(du -sh "$SET" | cut -f1))" "$t"
 fi
 
 # --- 2. integridade ---------------------------------------------------------------------------
@@ -177,6 +170,12 @@ t=$(now)
 mkdir -p "$WORK/config"
 tar -xzf "$SET/app/config.tar.gz" -C "$WORK/config"
 fase "tar -xzf config ($(find "$WORK/config" -type f | wc -l) arquivos)" "$t"
+if [[ -f "$SET/logs/logs.tar.gz" ]]; then
+  t=$(now)
+  mkdir -p "$WORK/logs"
+  tar -xzf "$SET/logs/logs.tar.gz" -C "$WORK/logs"
+  fase "tar -xzf logs ($(find "$WORK/logs" -type f | wc -l) arquivos)" "$t"
+fi
 
 if [[ "$DESTINO" == teste && "$MANTER" -eq 0 ]]; then
   for alvo in "${ALVO[@]}"; do sql -e "DROP DATABASE \`$alvo\`"; done
