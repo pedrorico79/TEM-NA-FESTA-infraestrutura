@@ -1,6 +1,6 @@
 # Política de backup (regra 3-2-1)
 
-Resumo: **RPO de 1 hora** (um backup a cada hora cheia, pelo cron do `app-1`) e **RTO de 1 hora** para a perda do ambiente inteiro (15 minutos quando só o banco se perde). Há quatro cópias em duas mídias, duas delas fora da região do ambiente, e cada transferência é conferida por `sha256sum`.
+Resumo: **RPO de 24 horas** (um backup por dia, às 03:00 de Brasília, pelo cron do `app-1`) e **RTO de 1 hora** para a perda do ambiente inteiro (15 minutos quando só o banco se perde). Há quatro cópias em duas mídias, duas delas fora da região do ambiente, e cada transferência é conferida por `sha256sum`.
 
 ## Escopo
 
@@ -21,8 +21,8 @@ Fora do escopo, de propósito: os segredos (ficam no SSM e no `secrets.env` do a
 | Cópia | Local | Mídia | Conteúdo | Retenção |
 |---|---|---|---|---|
 | 1, produção | RDS MySQL, `us-east-1` | banco gerenciado | os dados vivos | o snapshot final no `infra down` (05, B2) |
-| 2, local | `/bckp/<carimbo>/` no `app-1`, `us-east-1` | disco EBS (bloco) | conjunto inteiro, em claro e `.gpg` | 24 horas |
-| 3, fora do local | `s3://tnf-backup-<conta>-us-west-2/<env>/` | armazenamento de objeto, outra região | só `.gpg` e `SHA256SUMS` | `horario/` 2 dias, `diario/` 35 dias, `logs/` 180 dias, versões antigas 7 dias |
+| 2, local | `/bckp/<carimbo>/` no `app-1`, `us-east-1` | disco EBS (bloco) | conjunto inteiro, em claro e `.gpg` | 72 horas (3 conjuntos) |
+| 3, fora do local | `s3://tnf-backup-<conta>-us-west-2/<env>/` | armazenamento de objeto, outra região | só `.gpg` e `SHA256SUMS` | `diario/` 35 dias, `logs/` 180 dias, versões antigas 7 dias |
 | 4, offline | `~/tnf-backups/<env>/` no computador do autor | disco local, fora da AWS | só `.gpg` e `SHA256SUMS` | sem expiração |
 
 As cópias 1 a 3 cumprem a 3-2-1 (três cópias, duas mídias, uma fora do local). A cópia 4 fica isolada quando o computador está desligado e aproxima a política da 3-2-1-1-0; o "0 erros" vem da restauração de teste (`tnf-backup-restore`), que compara as contagens.
@@ -33,14 +33,15 @@ Os logs têm a cópia 1 no bucket bronze (`us-east-1`), a 2 em `/bckp` e a 3 e a
 
 ## RPO e cronjob
 
-O sistema registra pedidos de uma confeitaria, lançados à mão pela equipe a partir das conversas de WhatsApp. Perder até uma hora de lançamentos é recuperável, porque as conversas continuam no WhatsApp; perder um dia, não. Daí o RPO de 1 hora. Cada execução leva alguns segundos e gera menos de 1 MB, então o custo de rodar de hora em hora é desprezível.
+O backup roda uma vez por dia, às 03:00 de Brasília, quando a confeitaria está fechada e ninguém lança pedidos. O RPO é de 24 horas: no pior caso se perde o dia de lançamentos desde a madrugada anterior, que a equipe consegue refazer pelas conversas de WhatsApp, onde os pedidos chegam.
 
 ```cron
-# /etc/cron.d/tnf-backup (node/cron/tnf-backup)
-0 * * * * root /usr/local/sbin/tnf-backup >> /var/log/tnf-backup.log 2>&1
+# /etc/cron.d/tnf-backup (node/cron/tnf-backup). Os nós rodam em UTC: 06:00 UTC = 03:00 em Brasília.
+0 6 * * * root /usr/local/sbin/tnf-backup >> /var/log/tnf-backup.log 2>&1
+30 * * * * root /usr/local/sbin/tnf-backup --se-atrasado >> /var/log/tnf-backup.log 2>&1
 ```
 
-O cron é instalado pelo `node-bootstrap.sh` em todos os nós app, e o script só age no `app-1`. O primeiro conjunto de cada dia também vai para `diario/`, o que dispensa um segundo horário de cron (o laboratório raramente fica no ar às 2 h da manhã).
+A segunda linha existe por causa do laboratório, que raramente está no ar às 3 h. A cada hora, o script só lista o S3: se o último backup diário tiver menos de 24 horas, termina sem fazer nada; se tiver mais, faz o backup naquela hora. Assim o RPO de 24 horas vale mesmo quando o ambiente sobe à tarde. O cron é instalado pelo `node-bootstrap.sh` em todos os nós app, e o script só age no `app-1`.
 
 ## RTO
 

@@ -68,12 +68,12 @@ T_INICIO=$(now)
 t=$(now)
 if [[ "$ORIGEM" == s3 ]]; then
   if [[ -z "$CARIMBO" ]]; then
-    CARIMBO="$(aws s3 ls "$S3_BACKUP/$TNF_ENV/horario/" --region "$BACKUP_REGION" | awk '$1 == "PRE" { sub("/", "", $2); print $2 }' | sort | tail -n 1)"
-    [[ -n "$CARIMBO" ]] || { echo "nenhum backup em $S3_BACKUP/$TNF_ENV/horario/" >&2; exit 2; }
+    CARIMBO="$({ aws s3 ls "$S3_BACKUP/$TNF_ENV/diario/" --region "$BACKUP_REGION" 2>/dev/null || true; } | awk '$1 == "PRE" { sub("/", "", $2); print $2 }' | sort | tail -n 1)"
+    [[ -n "$CARIMBO" ]] || { echo "nenhum backup em $S3_BACKUP/$TNF_ENV/diario/" >&2; exit 2; }
   fi
   SET="$WORK/set"
-  say "baixando $S3_BACKUP/$TNF_ENV/horario/$CARIMBO/"
-  aws s3 cp "$S3_BACKUP/$TNF_ENV/horario/$CARIMBO/" "$SET/" --recursive --region "$BACKUP_REGION" --only-show-errors
+  say "baixando $S3_BACKUP/$TNF_ENV/diario/$CARIMBO/"
+  aws s3 cp "$S3_BACKUP/$TNF_ENV/diario/$CARIMBO/" "$SET/" --recursive --region "$BACKUP_REGION" --only-show-errors
   fase "download do S3 ($(du -sh "$SET" | cut -f1))" "$t"
 else
   [[ -n "$CARIMBO" ]] || CARIMBO="$(cat "$BACKUP_DIR/ULTIMO")"

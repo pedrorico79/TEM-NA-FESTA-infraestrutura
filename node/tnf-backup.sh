@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tnf-backup: backup do ambiente pela política 3-2-1 (docs/politica-de-backup.md).
-# Executado pelo cron (/etc/cron.d/tnf-backup) a cada hora nos nós app; só age
-# no app-1, que tem o cliente MySQL e acesso ao RDS. Cada execução gera um
+# Executado pelo cron (/etc/cron.d/tnf-backup) todo dia às 03:00 de Brasília nos
+# nós app; só age no app-1, que tem o cliente MySQL e acesso ao RDS. Cada execução gera um
 # conjunto /bckp/<carimbo>/ com:
 #   db/<schema>.sql.gz        dump de cada schema (mysqldump | gzip)
 #   app/config.tar.gz         stack.env, compose files, tnf-node.env e as
@@ -9,10 +9,9 @@
 #   contagens.tsv             linhas por tabela no momento do dump (validação)
 #   *.gpg                     cópia criptografada de cada arquivo (chave pública)
 #   SHA256SUMS                sha256 de todos os arquivos acima
-# Cópia 2 (local, disco EBS do app-1): o conjunto inteiro, por 24 h.
+# Cópia 2 (local, disco EBS do app-1): o conjunto inteiro, por 72 h (3 conjuntos).
 # Cópia 3 (fora do local, S3 em outra região): só os .gpg e o SHA256SUMS, em
-#   s3://<bucket>/<env>/horario/<carimbo>/; o primeiro conjunto de cada dia
-#   também vai para <env>/diario/.
+#   s3://<bucket>/<env>/diario/<carimbo>/.
 # Logs: cada dia completo de logs do bucket bronze (docker, com o log de acesso
 #   do Nginx; auth; systemd) vira logs/<dia>/logs_<dia>.tar.gz (+ .gpg e
 #   SHA256SUMS próprio) e vai para <env>/logs/<dia>/, uma vez por dia, até 14
@@ -21,10 +20,14 @@
 # A senha do banco nunca vai na linha de comando: arquivo de opções em /run,
 # permissão 600, apagado ao fim (05, A6).
 #
-# Uso: tnf-backup [--force]   (--force roda fora do app-1)
+# Uso: tnf-backup [--force] [--se-atrasado]
+#   --force: roda fora do app-1.
+#   --se-atrasado: só faz o backup se o último conjunto no S3 tiver mais de
+#     24 h (o laboratório raramente está no ar às 3 h; o cron chama assim a
+#     cada hora para recuperar o diário perdido, e não faz nada no resto).
 # Variáveis (opcionais): TNF_BACKUP_DIR (/bckp), TNF_BACKUP_BUCKET
 #   (tnf-backup-<conta>-us-west-2), TNF_BACKUP_REGION (us-west-2),
-#   TNF_BACKUP_MIN_FREE_MB (500), TNF_BACKUP_LOCAL_HOURS (24),
+#   TNF_BACKUP_MIN_FREE_MB (500), TNF_BACKUP_LOCAL_HOURS (72),
 #   TNF_BACKUP_LOG_DAYS (14), TNF_BRONZE_BUCKET e TNF_BRONZE_REGION (lidos do
 #   /etc/fluent-bit/fluent-bit.conf).
 # Saída: 0 ok; 1 erro (mensagem no log); 2 recusado (pré-condição).
@@ -38,8 +41,14 @@ fi
 
 # shellcheck source=/dev/null
 source "${TNF_NODE_ENV:-/etc/tnf-node.env}"
-FORCE=0
-[[ "${1:-}" == "--force" ]] && FORCE=1
+FORCE=0 IF_LATE=0
+for arg in "$@"; do
+  case "$arg" in
+    --force) FORCE=1 ;;
+    --se-atrasado) IF_LATE=1 ;;
+    *) echo "opção desconhecida: $arg" >&2; exit 2 ;;
+  esac
+done
 
 if [[ "$FORCE" -eq 0 && "$TNF_HOSTNAME" != *-app-1 ]]; then
   exit 0
@@ -48,7 +57,7 @@ fi
 BACKUP_DIR="${TNF_BACKUP_DIR:-/bckp}"
 BACKUP_REGION="${TNF_BACKUP_REGION:-us-west-2}"
 MIN_FREE_MB="${TNF_BACKUP_MIN_FREE_MB:-500}"
-LOCAL_HOURS="${TNF_BACKUP_LOCAL_HOURS:-24}"
+LOCAL_HOURS="${TNF_BACKUP_LOCAL_HOURS:-72}"
 GNUPGHOME="${TNF_BACKUP_GNUPGHOME:-/var/lib/tnf-backup/gnupg}"
 RUN_DIR="${TNF_BACKUP_RUN_DIR:-/run}"
 export GNUPGHOME
@@ -68,8 +77,19 @@ if [[ -z "${TNF_BACKUP_BUCKET:-}" ]]; then
 fi
 S3_BACKUP="s3://$TNF_BACKUP_BUCKET"
 
+if [[ "$IF_LATE" -eq 1 ]]; then
+  last="$({ aws s3 ls "$S3_BACKUP/$TNF_ENV/diario/" --region "$BACKUP_REGION" 2>/dev/null || true; } |
+    awk '$1 == "PRE" { sub("/", "", $2); print $2 }' | sort | tail -n 1)"
+  if [[ -n "$last" ]]; then
+    last_epoch=$(date -u -d "$(sed 's/_/ /; s/-\([0-9][0-9]\)$/:\1/' <<<"$last")" +%s)
+    if (($(date -u +%s) - last_epoch < 24 * 3600)); then
+      exit 0 # o diário está em dia
+    fi
+  fi
+  log "último backup diário: ${last:-nenhum}; mais de 24 h, fazendo agora"
+fi
+
 STAMP="$(date -u +%Y-%m-%d_%H-%M)"
-DAY="${STAMP%%_*}"
 SET="$BACKUP_DIR/$STAMP"
 START=$(date +%s)
 log "início do backup $STAMP (ambiente $TNF_ENV, destino $S3_BACKUP)"
@@ -178,7 +198,7 @@ mv "$BACKUP_DIR/.SHA256SUMS.tmp" "$SET/SHA256SUMS"
 log "SHA256SUMS: $(wc -l <"$SET/SHA256SUMS") arquivos"
 
 # --- 7. cópia fora do local (S3, outra região) --------------------------------------------
-dest="$S3_BACKUP/$TNF_ENV/horario/$STAMP"
+dest="$S3_BACKUP/$TNF_ENV/diario/$STAMP"
 t0=$(date +%s)
 (
   cd "$SET"
@@ -200,14 +220,7 @@ printf '%s\n' "$check_out" | sed 's/^/  /'
 ok_count=$(grep -c ': OK$' <<<"$check_out")
 log "integridade conferida no destino: $ok_count arquivos OK, 0 erros"
 
-# --- 9. diária: o primeiro conjunto do dia também fica em <env>/diario/ ---------------------
-if ! aws s3 ls "$S3_BACKUP/$TNF_ENV/diario/$DAY" --region "$BACKUP_REGION" >/dev/null 2>&1; then
-  aws s3 cp "$dest/" "$S3_BACKUP/$TNF_ENV/diario/$STAMP/" --recursive --region "$BACKUP_REGION" --only-show-errors ||
-    fail "cópia diária"
-  log "primeiro conjunto do dia: copiado para $TNF_ENV/diario/$STAMP"
-fi
-
-# --- 9b. logs do bronze: um pacote por dia completo (falha aqui não derruba o backup) ----------
+# --- 9. logs do bronze: um pacote por dia completo (falha aqui não derruba o backup) ----------
 FB_CONF="${TNF_FLUENT_BIT_CONF:-/etc/fluent-bit/fluent-bit.conf}"
 BRONZE="${TNF_BRONZE_BUCKET:-$(awk '$1 == "bucket" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"
 BRONZE_REGION="${TNF_BRONZE_REGION:-$(awk '$1 == "region" { print $2; exit }' "$FB_CONF" 2>/dev/null || true)}"

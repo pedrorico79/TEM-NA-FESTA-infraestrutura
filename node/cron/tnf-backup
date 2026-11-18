@@ -1,5 +1,9 @@
-# Backup do ambiente (docs/politica-de-backup.md): RPO de 1 hora, então um
-# conjunto a cada hora cheia. O script só age no app-1.
+# Backup do ambiente (docs/politica-de-backup.md). O script só age no app-1.
+# Os nós rodam em UTC: 06:00 UTC = 03:00 em Brasília (sem horário de verão desde 2019).
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-0 * * * * root /usr/local/sbin/tnf-backup >> /var/log/tnf-backup.log 2>&1
+# Backup diário às 03:00 de Brasília (RPO de 24 h).
+0 6 * * * root /usr/local/sbin/tnf-backup >> /var/log/tnf-backup.log 2>&1
+# Recuperação: o laboratório raramente está no ar às 3 h. A cada hora o script
+# só confere o S3 e, se o último diário tiver mais de 24 h, faz o backup na hora.
+30 * * * * root /usr/local/sbin/tnf-backup --se-atrasado >> /var/log/tnf-backup.log 2>&1
