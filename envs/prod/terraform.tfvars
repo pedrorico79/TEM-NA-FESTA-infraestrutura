@@ -48,5 +48,5 @@ messaging_db_schema_path     = "src/main/resources/db/migration/V1__create_initi
 
 # Coleta semanal dos produtos do sistema e Google Trends.
 datasets_enabled = true
-dataset_ref      = "v1.0.1"
+dataset_ref      = "v1.0.2"
 dataset_schedule = "cron(0 12 ? * MON *)"
