@@ -45,3 +45,8 @@ messaging_port               = 8081
 messaging_db_schema_repo_url = "https://github.com/pedrorico79/TEM-NA-FESTA-microservice"
 messaging_db_schema_ref      = "v1.0.0"
 messaging_db_schema_path     = "src/main/resources/db/migration/V1__create_initial_schema.sql"
+
+# Coleta semanal dos produtos do sistema e Google Trends.
+datasets_enabled = true
+dataset_ref      = "v1.0.1"
+dataset_schedule = "cron(0 12 ? * MON *)"
