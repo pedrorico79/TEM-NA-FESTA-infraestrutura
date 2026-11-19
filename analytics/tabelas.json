@@ -1,30 +1,4 @@
 {
-  "pof_trends_resumo": {
-    "produto_id": "int",
-    "produto_ibge": "string",
-    "termo_trends": "string",
-    "consumo_kg_sp": "double",
-    "popularidade_media": "double",
-    "popularidade_pico": "double",
-    "mes_pico": "int",
-    "fator_sazonalidade": "double",
-    "tipo_feriado_pico": "string",
-    "evento_associado": "string"
-  },
-  "pof_trends_serie": {
-    "produto_id": "int",
-    "mes_referencia": "string",
-    "popularidade": "double",
-    "mes_parcial": "boolean"
-  },
-  "pof_trends_rejeicoes": {
-    "produto_id": "int",
-    "produto": "string",
-    "regra": "string",
-    "motivo": "string",
-    "severidade": "string",
-    "data_ocorrencia": "string"
-  },
   "tendencias_produtos_resumo": {
     "produto_id": "int",
     "produto_nome": "string",

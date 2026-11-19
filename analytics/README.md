@@ -1,7 +1,11 @@
-# `analytics/`
+# Camada Glue e Athena
 
-Camada persistente de dados analíticos (spec 10, DA5): a Lambda semanal da base da "Especificação de Base de Dados" (POF/IBGE + Google Trends), o banco `tnf_bronze` do Glue com as tabelas declaradas e *partition projection*, o workgroup `tnf` do Athena e a configuração do bucket de resultados. Fica no ar com ou sem ambiente; o `infra down` não a toca.
+Esta camada cataloga no Glue os arquivos bronze dos produtos ativos do sistema e dos logs, cria o workgroup `tnf` do Athena e instala as visões de consulta. Ela é compartilhada entre os ambientes e não executa coletas.
 
-- `./infra analytics plan` e `./infra analytics up`: empacotam a Lambda na tag `dataset_ref`, criam o bucket de resultados (AWS CLI) e aplicam. O `up` também cria no Athena as visões de `views/`.
-- `./infra dataset run pof-trends`: roda a coleta da base da EBD agora, sem esperar a segunda-feira.
-- Consultas: no console do Athena, workgroup `tnf`, banco `tnf_bronze`. A coluna `date` das tabelas de logs precisa de aspas (`"date"`).
+- `infra analytics plan` mostra o plano do catálogo e do workgroup.
+- `infra analytics up` aplica a camada, remove as tabelas e visões POF antigas e cria `vw_tendencias_produtos_atual` no Athena. Os objetos históricos no S3 não são apagados.
+- `infra dataset run dev` ou `infra dataset run prod` aciona a Lambda de produtos do ambiente.
+
+A Lambda `tnf-<env>-tendencias` é provisionada junto do ambiente em `modules/datasets`. Ela consulta a API do backend e grava `datasets/tendencias_produtos/{bruto,resumo,serie,rejeicoes}/` no bronze. A origem POF não faz parte desta camada.
+
+Consultas: workgroup `tnf`, banco `tnf_bronze`. A coluna `date` das tabelas de logs precisa de aspas (`"date"`).

@@ -1,5 +1,5 @@
 -- Produtos do sistema: a coleta mais recente de cada ambiente. Os produtos sem
--- dados no Google Trends aparecem como "Sem dados suficientes" (EBD, seção 5).
+-- dados no Google Trends aparecem como "Sem dados suficientes".
 CREATE OR REPLACE VIEW vw_tendencias_produtos_atual AS
 WITH ultima AS (
   SELECT env, max(data_coleta) AS data_coleta
