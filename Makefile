@@ -6,7 +6,7 @@
 #   make test    terraform validate nas raízes, terraform test do contrato e da
 #                camada analytics, e bats
 #   make trace   rastreabilidade dos testes (make trace STRICT=1 para o modo estrito)
-#   make dict    confere o dicionário de dados com o banco, o Glue e a EBD (10, D12)
+#   make dict    confere o dicionário de dados com o banco, o Glue e o bruto da coleta (10, D12)
 #   make check   tudo acima, com o fmt em modo de verificação
 
 SHELL := /usr/bin/env bash
@@ -129,7 +129,7 @@ contract-envs:
 	  terraform -chdir="$(CONTRACT_TESTS)/envs" test -test-directory=. "$${args[@]}"; \
 	done
 
-# Testes da camada analytics (10, D1 a D3), com o provedor AWS simulado.
+# Testes da camada analytics (10, D3), com o provedor AWS simulado.
 analytics-test:
 	@echo "== terraform test (analytics)"
 	@d="$$(mktemp -d)"; \

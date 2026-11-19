@@ -1,60 +1,42 @@
 # Dicionário de dados do Tem Na Festa
 
-Este dicionário descreve a coleta ativa de produtos do sistema com Google Trends, as tabelas Glue/Athena do bronze e o banco MySQL. A coleta lê os produtos ativos pela API do backend e envia `produto_nome` como termo de busca; não consulta a planilha externa de aquisição alimentar.
+Fonte única e versionada do dicionário de dados (spec 10, seção 10; DA6). Cobre a coleta dos produtos ativos do sistema com o Google Trends, as tabelas Glue/Athena do bronze e o banco MySQL. A coleta lê os produtos ativos pela API do backend e envia `produto_nome` como termo de busca. A base POF/IBGE ("aquisição alimentar por unidade da federação") saiu da coleta em 19/11/2026 (spec 10, DA8).
 
-**Sensibilidade:** *pessoal* é dado pessoal pela LGPD; *segredo* nunca aparece em exemplo nem sai do banco; *interna* é dado do negócio sem identificação de pessoa; *pública* é o índice retornado pelo Google Trends.
+O `make dict` (`scripts/check-dictionary.sh`, na branch `develop`) confere este arquivo com o script do banco na tag `db_schema_ref`, com as colunas das tabelas do Glue (`analytics/tabelas.json`) e com os campos do arquivo bruto da coleta. Ele recusa tabela ou coluna faltando, sobrando ou com tipo diferente (D12). Por isso as tabelas abaixo seguem um formato fixo: o título de cada uma traz o nome entre crases e a primeira coluna traz o nome do campo entre crases.
 
-## 1. Coleta raw: produtos ativos e Google Trends
+**Sensibilidade:** *pessoal* é dado pessoal pela LGPD (nome, contato, endereço, email); *segredo* nunca aparece em exemplo nem sai do banco; *interna* é dado do negócio sem identificação de pessoa; *pública* é o índice retornado pelo Google Trends.
 
-A Lambda `tnf-<env>-tendencias` busca os produtos ativos no backend e gera uma carga completa por ambiente e data de coleta. A coleta local gera o mesmo layout sob `arquivos-gerados/datasets/tendencias_produtos/`; na AWS, os arquivos são gravados no bucket bronze.
+## 1. Coleta: produtos ativos e Google Trends
+
+A Lambda `tnf-<env>-tendencias` (módulo `datasets` do ambiente) busca os produtos ativos no backend e grava uma carga completa por ambiente e data de coleta, toda segunda-feira às 09:00 de São Paulo (`dataset_schedule`) ou pelo `infra dataset run <env>`. A coleta local gera o mesmo layout sob `arquivos-gerados/datasets/tendencias_produtos/`; na AWS, os arquivos vão para o bucket bronze.
 
 ```text
 datasets/tendencias_produtos/{bruto,resumo,serie,rejeicoes}/env={env}/data_coleta=AAAA-MM-DD/
 ```
 
-O CSV bruto é UTF-8 com BOM, separador `;` e fim de linha `\r\n`. Os JSONL contêm um objeto por linha. O mês de busca é `produto_nome` exatamente como cadastrado no sistema; não há coluna separada `termo_trends`.
+O CSV bruto (`tendencias_produtos_sistema.csv`) é UTF-8 com BOM, separador `;` e fim de linha `\r\n`. Os JSON Lines têm um objeto por linha. O termo de busca é `produto_nome` exatamente como cadastrado no sistema; não há coluna separada `termo_trends`.
 
 ### `tendencias_produtos.bruto`
 
-Uma linha por produto com dados suficientes no Trends. Campos mensais `AAAA-MM` cobrem os 12 meses mais recentes; o mês corrente é parcial.
+Uma linha por produto com dados suficientes no Trends. As colunas mensais `AAAA-MM` cobrem os 12 meses mais recentes; o mês corrente é parcial.
 
-| Papel no projeto | Nome do campo | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo | Descrição |
-|---|---|---|---|---|---|---|---|
-| Chave do produto | `produto_id` | inteiro | 10 | sim | ID do produto retornado pela API; não nulo e sem repetição | 12 | Identificador do produto no sistema |
-| Nome e termo de busca | `produto_nome` | texto | 100 | sim | Nome do produto ativo, sem espaços nas pontas; enviado ao Trends sem canonicalização | Bolo de pote | Nome cadastrado no sistema e termo pesquisado |
-| Preço cadastrado | `preco_venda` | decimal | 10,2 | não | Numérico quando fornecido; pode ser nulo | 12.50 | Preço informado pela API |
-| Data da coleta | `data_coleta` | data | 10 | sim | `YYYY-MM-DD`, fuso de São Paulo | 2026-11-19 | Data de execução e partição |
-| Popularidade mensal | coluna dinâmica `AAAA-MM` | decimal | 5,2 | não | Índice de 0 a 100; célula vazia se não houver observação no mês | 44.0 | Média mensal do Google Trends |
-| Média do período | `popularidade_media` | decimal | 5,2 | sim | Média dos valores mensais disponíveis, 0 a 100 | 31.4 | Média da popularidade mensal |
-| Pico do período | `popularidade_pico` | decimal | 5,2 | sim | Máximo mensal, 0 a 100 | 100.0 | Maior popularidade mensal |
-| Mês do pico | `mes_pico` | inteiro | 2 | sim | Mês de 1 a 12; em empate prevalece o primeiro mês cronológico | 12 | Mês associado ao pico |
-| Sazonalidade | `fator_sazonalidade` | decimal | variável, 2 casas | sim | `popularidade_pico / popularidade_media`, arredondado a duas casas | 3.18 | Pico dividido pela média |
-| Classificação do pico | `tipo_feriado_pico` | texto | 30 | sim | Atualmente fixo como `Sazonalidade Comercial` | Sazonalidade Comercial | Tipo do evento associado |
-| Evento do calendário | `evento_associado` | texto | 60 | sim | Um dos rótulos comerciais definidos pelo mês do pico | Festas de Fim de Ano / Natal | Evento associado ao mês do pico |
+| Campo | Papel | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo real | Descrição | Chave | Sensibilidade |
+|---|---|---|---|---|---|---|---|---|---|
+| `produto_id` | Chave do produto | inteiro | 10 | sim | ID do produto retornado pela API; não nulo e sem repetição | 12 | Identificador do produto no sistema | PK (com `data_coleta`); FK → `tem_na_festa.produto.id` | interna |
+| `produto_nome` | Nome e termo de busca | texto | 100 | sim | Nome do produto ativo, sem espaços nas pontas; enviado ao Trends sem canonicalização | Bolo de pote | Nome cadastrado no sistema e termo pesquisado | | interna |
+| `preco_venda` | Preço cadastrado | decimal | 10,2 | não | Numérico quando fornecido; pode ser nulo | 12.50 | Preço informado pela API | | interna |
+| `data_coleta` | Data da coleta | data | 10 | sim | `YYYY-MM-DD`, fuso de São Paulo | 2026-11-19 | Data de execução; vira a partição `data_coleta` no bronze | | interna |
+| `AAAA-MM` (12 colunas) | Popularidade mensal | decimal | 5,2 | não | Índice de 0 a 100; célula vazia se não houver observação no mês | 44.0 | Média mensal do Google Trends | | pública |
+| `popularidade_media` | Média do período | decimal | 5,2 | sim | Média dos valores mensais disponíveis, 0 a 100 | 31.4 | Média da popularidade mensal | | pública |
+| `popularidade_pico` | Pico do período | decimal | 5,2 | sim | Máximo mensal, 0 a 100 | 100.0 | Maior popularidade mensal | | pública |
+| `mes_pico` | Mês do pico | inteiro | 2 | sim | Mês de 1 a 12; em empate prevalece o primeiro mês cronológico | 12 | Mês associado ao pico | | pública |
+| `fator_sazonalidade` | Sazonalidade | decimal | 5,2 | sim | `popularidade_pico / popularidade_media`, arredondado a duas casas | 3.18 | Pico dividido pela média | | pública |
+| `tipo_feriado_pico` | Classificação do pico | texto | 30 | sim | Atualmente fixo como `Sazonalidade Comercial` | Sazonalidade Comercial | Tipo do evento associado | | pública |
+| `evento_associado` | Evento do calendário | texto | 60 | sim | Um dos 12 eventos do calendário comercial (abaixo), definido pelo `mes_pico` | Festas de Fim de Ano / Natal | Evento associado ao mês do pico | | pública |
 
-### `resumo.jsonl`
+Calendário comercial (`evento_associado` por `mes_pico`): 1 Verão / Férias Escolares; 2 Carnaval; 3 Preparação / Antecedência da Páscoa; 4 Páscoa / Outono; 5 Dia das Mães; 6 Dia dos Namorados / Festas Juninas; 7 Férias de Inverno; 8 Dia dos Pais; 9 Início da Primavera; 10 Dia das Crianças / Halloween; 11 Antecedência de Natal / Black Friday; 12 Festas de Fim de Ano / Natal.
 
-Uma linha JSON por produto e coleta. Contém os campos fixos do CSV bruto, exceto as 12 colunas mensais. Produtos sem dados suficientes no Trends são registrados como aviso em `rejeicoes.jsonl` e ficam fora do resumo.
-
-### `serie.jsonl`
-
-Uma linha JSON por produto e mês de referência; até 12 linhas por produto e coleta.
-
-| Campo | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo | Descrição |
-|---|---|---|---|---|---|---|
-| `produto_id` | inteiro | 10 | sim | ID do produto retornado pela API | 12 | Relaciona ao produto do resumo |
-| `mes_referencia` | texto | 7 | sim | `YYYY-MM`, em ordem cronológica | 2026-10 | Mês da observação |
-| `popularidade` | decimal ou nulo | 5,2 | não | Índice de 0 a 100; nulo sem observação no mês | 44.0 | Média mensal do Trends |
-| `mes_parcial` | booleano | — | sim | `true` no mês corrente; `false` nos anteriores | true | Indica mês incompleto |
-| `data_coleta` | data | 10 | sim | `YYYY-MM-DD`, fuso de São Paulo | 2026-11-19 | Versão da coleta |
-
-Chave lógica da série: `produto_id` + `mes_referencia` + `data_coleta`.
-
-### `rejeicoes.jsonl`
-
-Uma linha JSON por validação ou aviso. Campos: `produto_id` (inteiro ou nulo), `produto` (texto ou nulo), `regra` (texto), `motivo` (texto), `severidade` (`bloqueante` ou `aviso`) e `data_ocorrencia` (timestamp ISO 8601 com fuso de São Paulo). O arquivo vazio indica que não houve rejeições.
-
-Tabelas Glue/Athena sobre os objetos do bronze. `env` e `data_coleta` são partições lidas do caminho e expostas pelo catálogo; não se repetem no schema de colunas.
+As versões normalizadas do bruto, em JSON Lines, são as tabelas do Athena da seção 2: `resumo.jsonl` (os campos fixos do bruto, sem as colunas mensais; produtos sem dados suficientes no Trends ficam fora dele e entram como aviso nas rejeições), `serie.jsonl` (uma linha por produto e mês de referência, até 12 por produto e coleta) e `rejeicoes.jsonl` (uma linha por validação ou aviso; arquivo vazio quando não houve rejeições).
 
 ## 2. Tabelas do Athena (banco `tnf_bronze`)
 
@@ -95,7 +77,7 @@ Rejeições e avisos da base dos produtos; partições `env` e `data_coleta`. Me
 |---|---|---|---|---|---|---|---|---|
 | `produto_id` | int | 10 | não | `produto.id`, vazio em falha geral | 7 | Produto afetado | | interna |
 | `produto` | string | 100 | não | Nome do produto | Brigadeiro | Produto afetado | | interna |
-| `regra` | string | 30 | sim | Camadas da EBD 4.2 | coleta externa | Regra que falhou | | interna |
+| `regra` | string | 30 | sim | Camada da regra: estrutural, identificação, domínio, integridade, temporal, negócio ou coleta externa | coleta externa | Regra que falhou | | interna |
 | `motivo` | string | 300 | sim | Texto livre, sem email, senha nem cookie | Sem dados suficientes no Google Trends nos últimos 12 meses | O que aconteceu | | interna |
 | `severidade` | string | 10 | sim | `bloqueante` ou `aviso` | aviso | Se interrompeu a coleta | | interna |
 | `data_ocorrencia` | string | 25 | sim | ISO 8601 com fuso de São Paulo | 2026-11-02T10:15:40-03:00 | Quando a regra falhou | | interna |
@@ -142,7 +124,7 @@ Unidades do systemd da lista de 02, seção 7.1 (docker, ssh, fluent-bit, cloud-
 
 ## 3. Banco MySQL `tem_na_festa`
 
-Tabelas do script `script-bd-tem-na-festa.sql` do repositório `TEM-NA-FESTA-database`, na tag `db_schema_ref` (05, B5). É a "base interna" que a EBD, seção 5, prevê cruzar no futuro com o Trends. O tipo é o do script.
+Tabelas do script `script-bd-tem-na-festa.sql` do repositório `TEM-NA-FESTA-database`, na tag `db_schema_ref` (05, B5). É a base interna que pode ser cruzada no futuro com o Trends pelo `produto_id`. O tipo é o do script.
 
 ```mermaid
 erDiagram

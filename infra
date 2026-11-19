@@ -30,7 +30,7 @@ Comandos (a etapa de 09 em que cada um chega está entre parênteses):
   snapshot <env>               snapshot manual do banco (E4b)
   snapshots <env>              lista os snapshots do ambiente (E4b)
   down <env>                   destrói o ambiente, com snapshot final do banco (E3)
-  analytics <plan|up>          camada persistente de dados: Lambda da EBD, Glue e Athena (E10)
+  analytics <plan|up>          camada persistente de dados: Glue, Athena e visões (E10)
   dataset run <env>            roda agora a coleta dos produtos do sistema: dev ou prod (E10)
   dataset upload <alvo> <pasta>  plano B: envia ao bronze a coleta feita localmente (E10)
 
@@ -791,7 +791,7 @@ usage_analytics() {
 Uso: infra analytics <plan|up>
 
 Camada persistente de dados analíticos: catálogo do Glue, workgroup do Athena
- e bucket de resultados. A coleta dos produtos roda pelas Lambdas dos ambientes.
+e bucket de resultados. A coleta dos produtos roda pelas Lambdas dos ambientes.
   plan   mostra o plano, sem criar nada
   up     cria o bucket de resultados se faltar, aplica e cria as visões no Athena
 Fica no ar com ou sem ambiente; o infra down não a toca.
@@ -939,7 +939,7 @@ cmd_dataset() {
   aws lambda invoke --function-name "$D_FUNCTION" --region "$D_REGION" \
     --cli-read-timeout 960 --cli-binary-format raw-in-base64-out \
     --payload "$payload" "$out" >/dev/null 2>"$out.err" ||
-    die "$EXIT_PRECONDITION" "não foi possível invocar $D_FUNCTION: $(tail -n 1 "$out.err"). Ela existe? (infra analytics up, ou datasets_enabled = true e infra up $target)"
+    die "$EXIT_PRECONDITION" "não foi possível invocar $D_FUNCTION: $(tail -n 1 "$out.err"). Ela existe? (datasets_enabled = true e infra up $target)"
   jq -r '"  status:     \(.status)",
          "  data:       \(.data_coleta)",
          (if .status == "ok" then "  produtos:   \(.produtos)" else "  motivo:     \(.motivo)" end),

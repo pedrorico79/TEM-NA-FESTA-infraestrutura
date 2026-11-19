@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # D12 (10, seção 11): scripts/check-dictionary.sh recusa o dicionário que
-# diverge do script do banco, das tabelas do Glue ou dos oito campos da EBD.
+# diverge do script do banco, das tabelas do Glue ou do bruto da coleta.
 # Usa o dicionário e o tabelas.json reais e um script SQL de exemplo.
 
 SCRIPT="$BATS_TEST_DIRNAME/../../scripts/check-dictionary.sh"
@@ -25,10 +25,10 @@ check() {
   run "$SCRIPT" --dict "$W/dict.md" --sql "$W/schema.sql" --tables "$W/tabelas.json"
 }
 
-@test "D12: dicionário, script do banco, Glue e EBD de acordo passam" {
+@test "D12: dicionário, script do banco, Glue e bruto da coleta de acordo passam" {
   check
   [ "$status" -eq 0 ]
-  [[ "$output" == *"12 tabelas do banco, 9 do Glue e os 8 campos da EBD"* ]]
+  [[ "$output" == *"12 tabelas do banco, 6 do Glue e os 10 campos do bruto da coleta"* ]]
 }
 
 @test "D12: coluna a mais no script do banco é recusada" {
@@ -52,11 +52,25 @@ check() {
   [[ "$output" == *"tem_na_festa.endereco.cep tem o tipo \"VARCHAR(8)\" no dicionário, mas \"VARCHAR(9)\""* ]]
 }
 
-@test "D12: campo da EBD com domínio diferente é recusado" {
-  sed -i 's/Inteiro de 1 a 12, mês da coluna com a maior popularidade/Inteiro de 1 a 13/' "$W/dict.md"
+@test "D12: campo do resumo que falta no bruto da coleta é recusado" {
+  sed -i '/Mês de 1 a 12; em empate prevalece o primeiro mês cronológico/d' "$W/dict.md"
   check
   [ "$status" -eq 2 ]
-  [[ "$output" == *"pof_trends.bruto.mes_pico: domínio \"Inteiro de 1 a 13\" difere da EBD 3.0"* ]]
+  [[ "$output" == *"falta o campo mes_pico em tendencias_produtos.bruto"* ]]
+}
+
+@test "D12: campo do bruto da coleta com domínio em branco é recusado" {
+  sed -i 's/| Atualmente fixo como `Sazonalidade Comercial` |/| |/' "$W/dict.md"
+  check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"tendencias_produtos.bruto.tipo_feriado_pico: domínio em branco no dicionário"* ]]
+}
+
+@test "D12: dicionário sem o bruto da coleta é recusado" {
+  sed -i 's/^### `tendencias_produtos.bruto`/### Bruto/' "$W/dict.md"
+  check
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"a tabela tendencias_produtos.bruto não está no dicionário"* ]]
 }
 
 @test "coluna do Glue sem linha no dicionário é recusada" {
