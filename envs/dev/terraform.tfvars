@@ -48,5 +48,5 @@ messaging_db_schema_path     = "src/main/resources/db/migration/V1__create_initi
 
 # Coleta dos produtos do sistema (10, E10 Parte 2), ligada para a apresentação.
 datasets_enabled = true
-dataset_ref      = "v1.0.1"
+dataset_ref      = "v1.0.2"
 dataset_schedule = "cron(0 12 ? * MON *)"
