@@ -114,6 +114,9 @@ resource "aws_instance" "node" {
   iam_instance_profile        = data.aws_iam_instance_profile.lab.name
   associate_public_ip_address = false
 
+  # O cloud-init só roda o user_data no primeiro boot: mudar o user_data
+  # recria a instância, em vez de só religá-la com o script novo sem rodar.
+  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     env              = var.env
     role             = each.value.group
@@ -161,6 +164,9 @@ resource "aws_instance" "bastion" {
   iam_instance_profile        = data.aws_iam_instance_profile.lab.name
   associate_public_ip_address = true
 
+  # O cloud-init só roda o user_data no primeiro boot: mudar o user_data
+  # recria a instância, em vez de só religá-la com o script novo sem rodar.
+  user_data_replace_on_change = true
   user_data = templatefile("${path.module}/user_data.sh.tftpl", {
     env              = var.env
     role             = "bastion"

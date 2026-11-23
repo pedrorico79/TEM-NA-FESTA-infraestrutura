@@ -1,8 +1,3 @@
-output "lambda_pof_trends" {
-  description = "Nome da Lambda semanal da base da EBD (infra dataset run pof-trends)."
-  value       = aws_lambda_function.pof_trends.function_name
-}
-
 output "glue_database" {
   description = "Banco do Glue com as tabelas do bronze."
   value       = aws_glue_catalog_database.bronze.name

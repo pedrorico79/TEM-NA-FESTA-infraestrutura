@@ -1,82 +1,46 @@
 # Dicionário de dados do Tem Na Festa
 
-Fonte única e versionada do dicionário de dados (spec 10, seção 10; DA6). Cobre as duas bases de tendências, o banco MySQL do sistema e as tabelas do Athena. O formato segue a "Especificação de Base de Dados" da disciplina (EBD 3.0, seção 3.1), estendido a todos os campos: **campo, tipo, tamanho, obrigatório, domínio e regra de validação, exemplo real**, mais **descrição, chave e sensibilidade**.
+Fonte única e versionada do dicionário de dados (spec 10, seção 10; DA6). Cobre a coleta dos produtos ativos do sistema com o Google Trends, as tabelas Glue/Athena do bronze e o banco MySQL. A coleta lê os produtos ativos pela API do backend e envia `produto_nome` como termo de busca. A base POF/IBGE ("aquisição alimentar por unidade da federação") saiu da coleta em 19/11/2026 (spec 10, DA8).
 
-O `make dict` (`scripts/check-dictionary.sh`, na branch `develop`) confere este arquivo com o script do banco na tag `db_schema_ref`, com as colunas das tabelas do Glue (`analytics/tabelas.json`) e com os oito campos com papel da EBD, e recusa tabela ou coluna faltando, sobrando ou com tipo diferente (D12). Por isso as tabelas abaixo seguem um formato fixo: o título de cada uma traz o nome entre crases e a primeira coluna traz o nome do campo entre crases.
+O `make dict` (`scripts/check-dictionary.sh`, na branch `develop`) confere este arquivo com o script do banco na tag `db_schema_ref`, com as colunas das tabelas do Glue (`analytics/tabelas.json`) e com os campos do arquivo bruto da coleta. Ele recusa tabela ou coluna faltando, sobrando ou com tipo diferente (D12). Por isso as tabelas abaixo seguem um formato fixo: o título de cada uma traz o nome entre crases e a primeira coluna traz o nome do campo entre crases.
 
-**Sensibilidade:** *pessoal* é dado pessoal pela LGPD (nome, contato, endereço, email); *segredo* nunca aparece em exemplo nem sai do banco; *interna* é dado do negócio sem identificação de pessoa; *pública* vem de fonte pública (POF/IBGE, Google Trends).
+**Sensibilidade:** *pessoal* é dado pessoal pela LGPD (nome, contato, endereço, email); *segredo* nunca aparece em exemplo nem sai do banco; *interna* é dado do negócio sem identificação de pessoa; *pública* é o índice retornado pelo Google Trends.
 
-## 1. Base da EBD: consumo POF/IBGE e popularidade no Google Trends
+## 1. Coleta: produtos ativos e Google Trends
 
-Coleta semanal da Lambda `tnf-coleta-pof-trends` (10, seção 4). Uma linha por categoria de confeitaria da POF (10 categorias), carga full a cada execução. Layout no bronze em 10, seção 5.
+A Lambda `tnf-<env>-tendencias` (módulo `datasets` do ambiente) busca os produtos ativos no backend e grava uma carga completa por ambiente e data de coleta, toda segunda-feira às 09:00 de São Paulo (`dataset_schedule`) ou pelo `infra dataset run <env>`. A coleta local gera o mesmo layout sob `arquivos-gerados/datasets/tendencias_produtos/`; na AWS, os arquivos vão para o bucket bronze.
 
-### `pof_trends.bruto`
+```text
+datasets/tendencias_produtos/{bruto,resumo,serie,rejeicoes}/env={env}/data_coleta=AAAA-MM-DD/
+```
 
-O arquivo do contrato da EBD, seção 2.1: `produtos_confeitaria_popularidade_mensal.csv`, UTF-8 com BOM, separador `;`, fim de linha `\r\n`, cabeçalho, cinco campos iniciais, uma coluna por mês (dinâmicas, em ordem cronológica) e as métricas. A coluna "Papel na EBD" marca os oito campos da seção 3.1 da EBD, conferidos pelo `make dict`.
+O CSV bruto (`tendencias_produtos_sistema.csv`) é UTF-8 com BOM, separador `;` e fim de linha `\r\n`. Os JSON Lines têm um objeto por linha. O termo de busca é `produto_nome` exatamente como cadastrado no sistema; não há coluna separada `termo_trends`.
 
-| Campo | Papel na EBD | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo real | Descrição | Chave | Sensibilidade |
+### `tendencias_produtos.bruto`
+
+Uma linha por produto com dados suficientes no Trends. As colunas mensais `AAAA-MM` cobrem os 12 meses mais recentes; o mês corrente é parcial.
+
+| Campo | Papel | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo real | Descrição | Chave | Sensibilidade |
 |---|---|---|---|---|---|---|---|---|---|
-| `produto_id` | 1. Chave primária | inteiro | 2 | sim | Número estável, único, positivo e não nulo (1 a 10) | 1 | Identificador fixo da categoria (mapa do script) | PK | pública |
-| `produto_ibge` | 5. Texto livre a canonicalizar | texto | 100 | sim | Nome da categoria na POF/IBGE, sem espaços nas pontas | Bolos | Categoria da POF, aba `Tabela 3.3 Sudeste`; regra de mapeamento: sem termo no mapa, a coleta é interrompida (EBD 3.4 e 4.2) | | pública |
-| `termo_trends` | 6. Chave de cruzamento | texto | 100 | sim | Termo do mapa de busca que liga a categoria à série do Trends | barra de chocolate | Termo pesquisado no Google Trends (`geo=BR-SP`, 12 meses); cruzamento da EBD 3.3 | | pública |
-| `consumo_kg_sp` | 7. Livre escolha | decimal | 8,3 | sim | Aquisição domiciliar per capita anual em kg, numérica, não nula e maior que zero | 0.379 | Coluna `São Paulo` da POF; regras de integridade e domínio (EBD 4.2) | | pública |
-| `data_coleta` | 2. Campo de data | data | 10 | sim | Data da execução semanal, `YYYY-MM-DD`, fuso de São Paulo | 2026-08-20 | Dia da coleta; vira a partição `data_coleta` no bronze | | interna |
-| `AAAA-MM` (12 colunas) | | decimal | 5,2 | sim | 0 a 100; nomes `YYYY-MM` sem repetição e em ordem (regra temporal) | 63.5 | Popularidade média do termo no mês (o mês corrente é parcial) | | pública |
-| `popularidade_media` | | decimal | 5,2 | sim | Maior que zero (regra de negócio: média zero é rejeitada) | 48.12 | Média das colunas mensais | | pública |
-| `popularidade_pico` | | decimal | 5,2 | sim | 0 a 100 | 100.0 | Maior valor das colunas mensais | | pública |
-| `mes_pico` | 8. Livre escolha | inteiro | 2 | sim | Inteiro de 1 a 12, mês da coluna com a maior popularidade | 3 | Mês do pico | | pública |
-| `fator_sazonalidade` | 4. Numérico a discretizar | decimal | 5,2 | sim | Maior que zero; `popularidade_pico` ÷ `popularidade_media`, só com média maior que zero | 2.75 | Discretizado em tercis na visão `vw_pof_trends_sazonalidade` (EBD 3.2) | | pública |
-| `tipo_feriado_pico` | | texto | 30 | sim | Sempre `Sazonalidade Comercial` | Sazonalidade Comercial | Tipo do evento do pico | | pública |
-| `evento_associado` | 3. Categórico de domínio fechado | texto | 60 | sim | Um dos 12 eventos do calendário comercial (abaixo), definido pelo `mes_pico` | Páscoa / Outono | Evento comercial do mês do pico | | pública |
+| `produto_id` | Chave do produto | inteiro | 10 | sim | ID do produto retornado pela API; não nulo e sem repetição | 12 | Identificador do produto no sistema | PK (com `data_coleta`); FK → `tem_na_festa.produto.id` | interna |
+| `produto_nome` | Nome e termo de busca | texto | 100 | sim | Nome do produto ativo, sem espaços nas pontas; enviado ao Trends sem canonicalização | Bolo de pote | Nome cadastrado no sistema e termo pesquisado | | interna |
+| `preco_venda` | Preço cadastrado | decimal | 10,2 | não | Numérico quando fornecido; pode ser nulo | 12.50 | Preço informado pela API | | interna |
+| `data_coleta` | Data da coleta | data | 10 | sim | `YYYY-MM-DD`, fuso de São Paulo | 2026-11-19 | Data de execução; vira a partição `data_coleta` no bronze | | interna |
+| `AAAA-MM` (12 colunas) | Popularidade mensal | decimal | 5,2 | não | Índice de 0 a 100; célula vazia se não houver observação no mês | 44.0 | Média mensal do Google Trends | | pública |
+| `popularidade_media` | Média do período | decimal | 5,2 | sim | Média dos valores mensais disponíveis, 0 a 100 | 31.4 | Média da popularidade mensal | | pública |
+| `popularidade_pico` | Pico do período | decimal | 5,2 | sim | Máximo mensal, 0 a 100 | 100.0 | Maior popularidade mensal | | pública |
+| `mes_pico` | Mês do pico | inteiro | 2 | sim | Mês de 1 a 12; em empate prevalece o primeiro mês cronológico | 12 | Mês associado ao pico | | pública |
+| `fator_sazonalidade` | Sazonalidade | decimal | 5,2 | sim | `popularidade_pico / popularidade_media`, arredondado a duas casas | 3.18 | Pico dividido pela média | | pública |
+| `tipo_feriado_pico` | Classificação do pico | texto | 30 | sim | Atualmente fixo como `Sazonalidade Comercial` | Sazonalidade Comercial | Tipo do evento associado | | pública |
+| `evento_associado` | Evento do calendário | texto | 60 | sim | Um dos 12 eventos do calendário comercial (abaixo), definido pelo `mes_pico` | Festas de Fim de Ano / Natal | Evento associado ao mês do pico | | pública |
 
 Calendário comercial (`evento_associado` por `mes_pico`): 1 Verão / Férias Escolares; 2 Carnaval; 3 Preparação / Antecedência da Páscoa; 4 Páscoa / Outono; 5 Dia das Mães; 6 Dia dos Namorados / Festas Juninas; 7 Férias de Inverno; 8 Dia dos Pais; 9 Início da Primavera; 10 Dia das Crianças / Halloween; 11 Antecedência de Natal / Black Friday; 12 Festas de Fim de Ano / Natal.
 
-**Discretização (EBD 3.2):** a visão `vw_pof_trends_sazonalidade` divide o `fator_sazonalidade` da coleta atual em tercis (`approx_percentile` 0,33 e 0,66): "Baixa sazonalidade", "Sazonalidade moderada" e "Alta sazonalidade", recalculados a cada coleta.
+As versões normalizadas do bruto, em JSON Lines, são as tabelas do Athena da seção 2: `resumo.jsonl` (os campos fixos do bruto, sem as colunas mensais; produtos sem dados suficientes no Trends ficam fora dele e entram como aviso nas rejeições), `serie.jsonl` (uma linha por produto e mês de referência, até 12 por produto e coleta) e `rejeicoes.jsonl` (uma linha por validação ou aviso; arquivo vazio quando não houve rejeições).
 
 ## 2. Tabelas do Athena (banco `tnf_bronze`)
 
 Tabelas declaradas no Glue sobre o bronze, com *partition projection* (10, seção 6.1). As colunas de partição (`data_coleta`, `env`, `year`, `month`, `day`) vêm do caminho e não se repetem no schema. Os tipos são os do Glue/Athena.
-
-### `tnf_bronze.pof_trends_resumo`
-
-Uma linha por categoria e coleta; partição `data_coleta`. Mesmos campos fixos do `pof_trends.bruto`, sem as colunas mensais.
-
-| Campo | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo real | Descrição | Chave | Sensibilidade |
-|---|---|---|---|---|---|---|---|---|
-| `produto_id` | int | 2 | sim | 1 a 10, único por coleta | 1 | Categoria da POF | PK (com `data_coleta`) | pública |
-| `produto_ibge` | string | 100 | sim | Categoria da POF | Bolos | Ver `pof_trends.bruto` | | pública |
-| `termo_trends` | string | 100 | sim | Termo do mapa de busca | bolo | Ver `pof_trends.bruto` | | pública |
-| `consumo_kg_sp` | double | 8,3 | sim | Maior que zero | 0.379 | kg per capita por ano em SP | | pública |
-| `popularidade_media` | double | 5,2 | sim | Maior que zero | 48.12 | Média mensal | | pública |
-| `popularidade_pico` | double | 5,2 | sim | 0 a 100 | 100.0 | Pico mensal | | pública |
-| `mes_pico` | int | 2 | sim | 1 a 12 | 3 | Mês do pico | | pública |
-| `fator_sazonalidade` | double | 5,2 | sim | Maior que zero | 2.75 | Pico ÷ média | | pública |
-| `tipo_feriado_pico` | string | 30 | sim | `Sazonalidade Comercial` | Sazonalidade Comercial | Tipo do evento | | pública |
-| `evento_associado` | string | 60 | sim | Calendário comercial da seção 1 | Páscoa / Outono | Evento do mês do pico | | pública |
-
-### `tnf_bronze.pof_trends_serie`
-
-Formato longo do `pof_trends.bruto`: uma linha por categoria e mês de referência; partição `data_coleta`.
-
-| Campo | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo real | Descrição | Chave | Sensibilidade |
-|---|---|---|---|---|---|---|---|---|
-| `produto_id` | int | 2 | sim | 1 a 10 | 1 | Categoria da POF | PK (com `mes_referencia` e `data_coleta`) | pública |
-| `mes_referencia` | string | 7 | sim | `YYYY-MM`, 12 meses por coleta | 2026-03 | Mês da popularidade | PK | pública |
-| `popularidade` | double | 5,2 | sim | 0 a 100 | 63.5 | Popularidade média do mês | | pública |
-| `mes_parcial` | boolean | 1 | sim | `true` só no mês corrente | false | Mês ainda incompleto na coleta | | interna |
-
-### `tnf_bronze.pof_trends_rejeicoes`
-
-Arquivo de rejeições da EBD, seção 4.1; partição `data_coleta`. Gravado mesmo quando a coleta é interrompida.
-
-| Campo | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo real | Descrição | Chave | Sensibilidade |
-|---|---|---|---|---|---|---|---|---|
-| `produto_id` | int | 2 | não | 1 a 10, vazio em falha geral | 8 | Categoria afetada | | pública |
-| `produto` | string | 100 | não | Categoria ou nome do produto | Sorvete | Produto afetado | | pública |
-| `regra` | string | 30 | sim | estrutural, identificação, domínio, integridade, temporal, mapeamento, negócio ou coleta externa (EBD 4.2) | coleta externa | Camada da regra que falhou | | interna |
-| `motivo` | string | 300 | sim | Texto livre, sem segredos | sem dados do Google Trends depois de 3 tentativas | O que aconteceu | | interna |
-| `severidade` | string | 10 | sim | `bloqueante` ou `aviso` | bloqueante | Se interrompeu a coleta | | interna |
-| `data_ocorrencia` | string | 25 | sim | ISO 8601 com fuso de São Paulo | 2026-11-02T09:01:13-03:00 | Quando a regra falhou | | interna |
 
 ### `tnf_bronze.tendencias_produtos_resumo`
 
@@ -107,13 +71,13 @@ Formato longo da base dos produtos; partições `env` e `data_coleta`.
 
 ### `tnf_bronze.tendencias_produtos_rejeicoes`
 
-Rejeições e avisos da base dos produtos; partições `env` e `data_coleta`. Mesmo formato de `tnf_bronze.pof_trends_rejeicoes`.
+Rejeições e avisos da base dos produtos; partições `env` e `data_coleta`. Mesmo contrato JSONL de rejeições da coleta do sistema.
 
 | Campo | Tipo | Tamanho | Obrigatório | Domínio e regra de validação | Exemplo real | Descrição | Chave | Sensibilidade |
 |---|---|---|---|---|---|---|---|---|
 | `produto_id` | int | 10 | não | `produto.id`, vazio em falha geral | 7 | Produto afetado | | interna |
 | `produto` | string | 100 | não | Nome do produto | Brigadeiro | Produto afetado | | interna |
-| `regra` | string | 30 | sim | Camadas da EBD 4.2 | coleta externa | Regra que falhou | | interna |
+| `regra` | string | 30 | sim | Camada da regra: estrutural, identificação, domínio, integridade, temporal, negócio ou coleta externa | coleta externa | Regra que falhou | | interna |
 | `motivo` | string | 300 | sim | Texto livre, sem email, senha nem cookie | Sem dados suficientes no Google Trends nos últimos 12 meses | O que aconteceu | | interna |
 | `severidade` | string | 10 | sim | `bloqueante` ou `aviso` | aviso | Se interrompeu a coleta | | interna |
 | `data_ocorrencia` | string | 25 | sim | ISO 8601 com fuso de São Paulo | 2026-11-02T10:15:40-03:00 | Quando a regra falhou | | interna |
@@ -160,7 +124,7 @@ Unidades do systemd da lista de 02, seção 7.1 (docker, ssh, fluent-bit, cloud-
 
 ## 3. Banco MySQL `tem_na_festa`
 
-Tabelas do script `script-bd-tem-na-festa.sql` do repositório `TEM-NA-FESTA-database`, na tag `db_schema_ref` (05, B5). É a "base interna" que a EBD, seção 5, prevê cruzar no futuro com o Trends. O tipo é o do script.
+Tabelas do script `script-bd-tem-na-festa.sql` do repositório `TEM-NA-FESTA-database`, na tag `db_schema_ref` (05, B5). É a base interna que pode ser cruzada no futuro com o Trends pelo `produto_id`. O tipo é o do script.
 
 ```mermaid
 erDiagram
