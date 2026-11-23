@@ -17,12 +17,25 @@ chmod 644 /etc/tnf-node.env
 
 hostnamectl set-hostname "${hostname}"
 
-# AWS CLI v2, com novas tentativas enquanto a rota da NAT não responde.
+# AWS CLI v2 pelo instalador oficial (o zip é extraído com o python3, porque a
+# AMI não traz o unzip); o snap fica como segunda opção, porque a loja do snap
+# já ficou fora do ar para a AWS (12/11/2026). Novas tentativas enquanto a rota
+# da NAT não responde.
+install_awscli() {
+  rm -rf /tmp/awscli.zip /tmp/aws
+  curl -fsSL --retry 3 --connect-timeout 10 --max-time 300 -o /tmp/awscli.zip \
+    "https://awscli.amazonaws.com/awscli-exe-linux-$(uname -m).zip" &&
+    python3 -m zipfile -e /tmp/awscli.zip /tmp/ &&
+    chmod -R u+x /tmp/aws &&
+    /tmp/aws/install --update
+}
 for i in 1 2 3 4 5; do
   if command -v aws >/dev/null 2>&1; then break; fi
-  if snap install aws-cli --classic; then break; fi
+  if install_awscli; then break; fi
+  if timeout 300 snap install aws-cli --classic; then break; fi
   sleep $((i * 10))
 done
+rm -rf /tmp/awscli.zip /tmp/aws
 
 for i in 1 2 3 4 5; do
   if aws s3 cp "s3://${artifacts_bucket}/node/node-bootstrap.sh" /usr/local/sbin/tnf-node-bootstrap --region "${region}"; then

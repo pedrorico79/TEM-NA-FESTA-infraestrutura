@@ -5,7 +5,7 @@
 # .infra/build/<lambda>-<tag>.zip. O zip de uma tag já gerado é reaproveitado,
 # então a função só muda no Terraform quando a tag muda (source_code_hash).
 #
-# Uso: scripts/build-dataset-lambda.sh <pof-trends|tendencias> <tag> [url do repositório]
+# Uso: scripts/build-dataset-lambda.sh <tendencias> <tag> [url do repositório]
 # Saída: o caminho do zip na saída padrão; 0 ok; 2 pré-requisito faltando.
 set -euo pipefail
 
@@ -13,17 +13,14 @@ INFRA_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 # shellcheck source=scripts/lib/common.sh
 source "$INFRA_ROOT/scripts/lib/common.sh"
 
-LAMBDA="${1:?informe a Lambda: pof-trends ou tendencias}"
+LAMBDA="${1:?informe a Lambda: tendencias}"
 REF="${2:?informe a tag do repositório do dataset (dataset_ref)}"
 REPO_URL="${3:-https://github.com/pedrorico79/TEM-NA-FESTA-dataset}"
 OUT_DIR="${TNF_BUILD_DIR:-$INFRA_ROOT/.infra/build}"
 ZIP="$OUT_DIR/$LAMBDA-$REF.zip"
 
-case "$LAMBDA" in
-  pof-trends) MODULE=tnf_pof_trends ;;
-  tendencias) MODULE=tnf_tendencias ;;
-  *) die "$EXIT_PRECONDITION" "Lambda desconhecida: $LAMBDA (use pof-trends ou tendencias)." ;;
-esac
+[[ "$LAMBDA" == tendencias ]] || die "$EXIT_PRECONDITION" "Lambda desconhecida: $LAMBDA (use tendencias)."
+MODULE=tnf_tendencias
 
 if [[ -f "$ZIP" ]]; then
   printf '%s\n' "$ZIP"
@@ -44,8 +41,7 @@ git -c advice.detachedHead=false clone -q --depth 1 --branch "$REF" "$REPO_URL" 
 
 PKG="$WORK/pacote"
 mkdir -p "$PKG"
-cp "$WORK/repo/script/"tnf_*.py "$PKG/"
-cp -r "$WORK/repo/bases-externas" "$PKG/"
+cp "$WORK/repo/script/tnf_comum.py" "$WORK/repo/script/tnf_tendencias.py" "$PKG/"
 python3 -m pip install -q --no-deps --no-compile --target "$PKG" \
   --platform manylinux2014_x86_64 --python-version 3.12 --implementation cp --only-binary=:all: \
   -r "$WORK/repo/requirements-lambda.txt" >"$WORK/pip.log" 2>&1 ||
