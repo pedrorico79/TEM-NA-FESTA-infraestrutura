@@ -145,9 +145,9 @@ Um único ponto de entrada, em bash, para as operações do dia a dia. Ele só o
 | `infra ssh <env> [nó]` | SSH pelo bastion até o nó escolhido (sem digitar IPs nem chaves). **Antes de conectar** faz as verificações de `infra access` (chave presente; IP autorizado, oferecendo autorizar). **Para chegar ao banco:** `infra ssh <env> app-1` e, no nó, `tnf-db-shell` | 02, seções 8 e 9 (A12, A15); 05, A7; 5.6 |
 | `infra snapshot <env>` | snapshot **manual** do RDS (`<prefixo>-manual-<data UTC>`) com o ambiente no ar; espera ficar disponível e imprime o nome. Nunca é restaurado sozinho | 05, B2 |
 | `infra snapshots <env>` | lista os snapshots do ambiente (nome, tipo final ou manual, data, tamanho, estado) para escolher um `--snapshot`; só leitura | 05, B2 |
-| `infra analytics plan\|up` | camada persistente `analytics/` (E10): empacota a Lambda da base da EBD na tag `dataset_ref`, cria o bucket de resultados do Athena se faltar, aplica e, no `up`, cria as visões de `analytics/views/` | 10, seções 4 e 6 |
-| `infra dataset run <pof-trends\|env> [--prazo <s>]` | roda uma coleta agora (invocação síncrona) e mostra o resumo; código `3` se a coleta foi interrompida | 10, seção 4 |
-| `infra dataset upload <pof-trends\|env> <pasta>` | plano B: envia ao bronze a coleta feita localmente pelo script do dataset, no mesmo layout | 10, DA2 |
+| `infra analytics plan\|up` | camada persistente `analytics/` (E10): cria o bucket de resultados do Athena se faltar, aplica o catálogo e o workgroup e, no `up`, remove as visões antigas da base POF (DA8) e cria as de `analytics/views/` | 10, seções 4 e 6 |
+| `infra dataset run <env> [--prazo <s>]` | roda uma coleta agora (invocação síncrona) e mostra o resumo; código `3` se a coleta foi interrompida | 10, seção 4 |
+| `infra dataset upload <env> <pasta>` | plano B: envia ao bronze a coleta feita localmente pelo script do dataset, no mesmo layout | 10, DA2 |
 | `infra down <env>` | pré-checagens como as do `up` (sem a de `manager_count`), `terraform destroy` (snapshot final do RDS), depois poda: 3 finais e 3 manuais mais recentes | 04, seção 9; 05, B2 |
 - **Segurança de uso:** `infra down prod` pede para digitar o nome do ambiente para confirmar; `--yes` pula a pergunta apenas em `dev`. Ambiente desconhecido é recusado (T1).
 - **Como o Terraform recebe os segredos manuais:** o `infra` lê `secrets.env` e os entrega por variáveis de ambiente `TF_VAR_*`, nunca por linha de comando nem por arquivo `.tfvars` (05, A5).

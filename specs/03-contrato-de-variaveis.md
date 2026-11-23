@@ -97,7 +97,7 @@ Distribuição em rodízio: o nó de índice `i` (começando em 0) fica na AZ `i
 | `bronze_bucket_name` | string | `null` | se `null`, segue a convenção `bucket-bronze-<id-da-conta>-<bronze_bucket_region>` |
 | `bronze_bucket_region` | string | `us-east-1` | região do bucket bronze (pode diferir de `region`) |
 
-**Dados analíticos (E10; 10, seção 7).** Valem para `envs/<env>`; a camada `analytics/` tem as suas em `analytics/variables.tf` (`dataset_ref`, `pof_trends_schedule`, `athena_bytes_scanned_cutoff`, `pandas_layer_version` e `lambda_reserved_concurrency`).
+**Dados analíticos (E10; 10, seção 7).** Valem para `envs/<env>`; a camada `analytics/` tem as suas em `analytics/variables.tf` (`region`, `bronze_bucket_name`, `athena_bytes_scanned_cutoff` e `dataset_envs`). Desde a DA8 (10, 19/11/2026) a camada não tem Lambda, e saíram dela `dataset_repo_url`, `dataset_ref`, `lambda_zip_path`, `pof_trends_schedule`, `pandas_layer_version` e `lambda_reserved_concurrency`; dev e prod usam `dataset_ref = "v1.0.2"` e `dataset_schedule = "cron(0 12 ? * MON *)"` nos seus `terraform.tfvars`.
 
 | Variável | Tipo | Padrão | Regra |
 |---|---|---|---|

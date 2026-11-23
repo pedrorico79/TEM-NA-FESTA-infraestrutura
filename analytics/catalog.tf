@@ -39,38 +39,10 @@ locals {
     "projection.day.digits"   = "2"
   }
 
-  coleta     = ["data_coleta"]
   env_coleta = ["env", "data_coleta"]
   env_dia    = ["env", "year", "month", "day"]
 
   tabelas = {
-    pof_trends_resumo = {
-      descricao  = "Base da EBD: uma linha por produto da POF por coleta (10, seção 5)"
-      prefixo    = "datasets/pof_trends/resumo"
-      particoes  = local.coleta
-      template   = "data_coleta=$${data_coleta}"
-      projecao   = local.proj_coleta
-      colunas    = local.colunas["pof_trends_resumo"]
-      mapeamento = {}
-    }
-    pof_trends_serie = {
-      descricao  = "Base da EBD: popularidade por produto e mês de referência"
-      prefixo    = "datasets/pof_trends/serie"
-      particoes  = local.coleta
-      template   = "data_coleta=$${data_coleta}"
-      projecao   = local.proj_coleta
-      colunas    = local.colunas["pof_trends_serie"]
-      mapeamento = {}
-    }
-    pof_trends_rejeicoes = {
-      descricao  = "Base da EBD: rejeições das regras de validação (EBD, seção 4.2)"
-      prefixo    = "datasets/pof_trends/rejeicoes"
-      particoes  = local.coleta
-      template   = "data_coleta=$${data_coleta}"
-      projecao   = local.proj_coleta
-      colunas    = local.colunas["pof_trends_rejeicoes"]
-      mapeamento = {}
-    }
     tendencias_produtos_resumo = {
       descricao  = "Produtos do sistema: uma linha por produto por coleta e ambiente"
       prefixo    = "datasets/tendencias_produtos/resumo"

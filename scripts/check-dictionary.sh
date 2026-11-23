@@ -2,8 +2,9 @@
 # Confere o dicionário de dados (10, seção 10; D12) com as fontes:
 #   - o script do banco na tag db_schema_ref (tabelas tem_na_festa.*);
 #   - as colunas das tabelas do Glue em analytics/tabelas.json (tnf_bronze.*);
-#   - os oito campos com papel da "Especificação de Base de Dados" 3.0, seção
-#     3.1 (pof_trends.bruto), com o mesmo tipo, tamanho, domínio e exemplo.
+#   - o arquivo bruto da coleta dos produtos (tendencias_produtos.bruto), que
+#     precisa descrever data_coleta e todos os campos do resumo do Glue, com
+#     papel, tipo, domínio e exemplo preenchidos (10, DA8).
 # Recusa tabela ou coluna faltando, sobrando ou com tipo diferente.
 #
 # Uso: scripts/check-dictionary.sh [--dict <md>] [--sql <arquivo>] [--tables <json>]
@@ -61,7 +62,7 @@ awk -F'|' '
     }
     if ($0 ~ /^\|[-| :]+$/) next
     campo = limpa($(col["Campo"]))
-    papel = ("Papel na EBD" in col) ? limpa($(col["Papel na EBD"])) : ""
+    papel = ("Papel" in col) ? limpa($(col["Papel"])) : ""
     printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", tabela, campo, papel, limpa($(col["Tipo"])), \
       limpa($(col["Tamanho"])), limpa($(col["Obrigatório"])), limpa($(col["Domínio e regra de validação"])), limpa($(col["Exemplo real"]))
     next
@@ -113,37 +114,33 @@ compara() {
 compara "$WORK/sql.tsv" tem_na_festa "o script do banco"
 compara "$WORK/glue.tsv" tnf_bronze "analytics/tabelas.json"
 
-# --- 4. os oito campos com papel da EBD 3.0, seção 3.1 ------------------------------------------
-# campo | papel | tipo | tamanho | obrigatório | domínio | exemplo
-EBD="$(cat <<'EOF'
-produto_id	1. Chave primária	inteiro	2	sim	Número estável, único, positivo e não nulo (1 a 10)	1
-data_coleta	2. Campo de data	data	10	sim	Data da execução semanal, YYYY-MM-DD, fuso de São Paulo	2026-08-20
-evento_associado	3. Categórico de domínio fechado	texto	60	sim	Um dos 12 eventos do calendário comercial (abaixo), definido pelo mes_pico	Páscoa / Outono
-fator_sazonalidade	4. Numérico a discretizar	decimal	5,2	sim	Maior que zero; popularidade_pico ÷ popularidade_media, só com média maior que zero	2.75
-produto_ibge	5. Texto livre a canonicalizar	texto	100	sim	Nome da categoria na POF/IBGE, sem espaços nas pontas	Bolos
-termo_trends	6. Chave de cruzamento	texto	100	sim	Termo do mapa de busca que liga a categoria à série do Trends	barra de chocolate
-consumo_kg_sp	7. Livre escolha	decimal	8,3	sim	Aquisição domiciliar per capita anual em kg, numérica, não nula e maior que zero	0.379
-mes_pico	8. Livre escolha	inteiro	2	sim	Inteiro de 1 a 12, mês da coluna com a maior popularidade	3
-EOF
-)"
+# --- 4. o bruto da coleta dos produtos (10, seção 5; DA8) --------------------------------------
+# O bruto não é catalogado no Glue, mas é o arquivo entregue à disciplina: ele
+# precisa descrever data_coleta e todos os campos do resumo, com papel, tipo,
+# domínio e exemplo preenchidos.
+BRUTO=tendencias_produtos.bruto
 nomes=(campo papel tipo tamanho obrigatório domínio exemplo)
-while IFS=$'\t' read -r -a esperado; do
-  linha="$(awk -F'\t' -v c="${esperado[0]}" '$1 == "pof_trends.bruto" && $2 == c { print; exit }' "$WORK/dict.tsv")"
-  if [[ -z "$linha" ]]; then
-    err "falta o campo ${esperado[0]} da EBD (seção 3.1) em pof_trends.bruto."
-    continue
-  fi
-  IFS=$'\t' read -r -a achado <<<"$linha"
-  for i in 1 2 3 4 5 6; do
-    if [[ "${achado[$((i + 1))]}" != "${esperado[$i]}" ]]; then
-      err "pof_trends.bruto.${esperado[0]}: ${nomes[$i]} \"${achado[$((i + 1))]}\" difere da EBD 3.0, seção 3.1 (\"${esperado[$i]}\")."
+campos_bruto="$({ echo data_coleta; awk -F'\t' '$1 == "tnf_bronze.tendencias_produtos_resumo" { print $2 }' "$WORK/glue.tsv"; } | sort -u)"
+if ! awk -F'\t' -v t="$BRUTO" '$1 == t { f = 1 } END { exit !f }' "$WORK/dict.tsv"; then
+  err "a tabela $BRUTO não está no dicionário. Acrescente a seção ### \`$BRUTO\` com os campos do arquivo bruto."
+else
+  while read -r campo; do
+    linha="$(awk -F'\t' -v t="$BRUTO" -v c="$campo" '$1 == t && $2 == c { print; exit }' "$WORK/dict.tsv")"
+    if [[ -z "$linha" ]]; then
+      err "falta o campo $campo em $BRUTO (o resumo do Glue o tem)."
+      continue
     fi
-  done
-done <<<"$EBD"
+    # awk, e não read -a: o tab é espaço para o read, que juntaria campos vazios.
+    for i in 1 2 5 6; do
+      [[ -n "$(awk -F'\t' -v n="$((i + 2))" '{ print $n }' <<<"$linha")" ]] ||
+        err "$BRUTO.$campo: ${nomes[$i]} em branco no dicionário."
+    done
+  done <<<"$campos_bruto"
+fi
 
 if [[ ${#errors[@]} -gt 0 ]]; then
   echo "Dicionário de dados com problemas (${#errors[@]}):" >&2
   printf '  - %s\n' "${errors[@]}" >&2
   exit 2
 fi
-echo "Dicionário OK: $(cut -f1 "$WORK/sql.tsv" | sort -u | wc -l) tabelas do banco, $(cut -f1 "$WORK/glue.tsv" | sort -u | wc -l) do Glue e os 8 campos da EBD conferidos."
+echo "Dicionário OK: $(cut -f1 "$WORK/sql.tsv" | sort -u | wc -l) tabelas do banco, $(cut -f1 "$WORK/glue.tsv" | sort -u | wc -l) do Glue e os $(wc -l <<<"$campos_bruto") campos do bruto da coleta conferidos."
