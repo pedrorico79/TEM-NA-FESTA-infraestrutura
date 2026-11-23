@@ -114,6 +114,20 @@ install_mysql_client() {
   chmod 755 /usr/local/bin/tnf-db-shell
 }
 
+# Backup de hora em hora (docs/politica-de-backup.md): o cron é instalado em
+# todos os nós app e o script só age no app-1.
+install_backup() {
+  STEP="backup"
+  apt_install gnupg cron
+  retry 5 aws s3 cp "$S3/node/tnf-backup.sh" /usr/local/sbin/tnf-backup --region "$TNF_REGION" --only-show-errors
+  retry 5 aws s3 cp "$S3/node/tnf-backup-restore.sh" /usr/local/sbin/tnf-backup-restore --region "$TNF_REGION" --only-show-errors
+  retry 5 aws s3 cp "$S3/node/cron/tnf-backup" /etc/cron.d/tnf-backup --region "$TNF_REGION" --only-show-errors
+  chmod 755 /usr/local/sbin/tnf-backup /usr/local/sbin/tnf-backup-restore
+  chmod 644 /etc/cron.d/tnf-backup
+  install -d -m 750 /bckp
+  systemctl enable --now cron
+}
+
 # --- 3. Fluent Bit (02, seção 7.1) ---------------------------------------------------
 
 configure_fluent_bit() {
@@ -195,7 +209,10 @@ main() {
   case "$TNF_ROLE" in
     web | app)
       install_docker
-      [[ "$TNF_ROLE" == app ]] && install_mysql_client
+      if [[ "$TNF_ROLE" == app ]]; then
+        install_mysql_client
+        install_backup
+      fi
       configure_fluent_bit
       join_swarm
       [[ "$TNF_MANAGER" == true ]] && install_converge
